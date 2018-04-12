@@ -3,6 +3,7 @@
 import os, time, random, json, argparse
 import ataxx_rules
 import engine
+import train
 
 STEP_COUNT = 100
 TEMPERATURE = 0.1
@@ -36,23 +37,25 @@ def generate_game():
 if __name__ == "__main__":
 	import argparse
 	parser = argparse.ArgumentParser()
-	parser.add_argument("--network", metavar="PATH", required=True, help="Network to generate training games with.")
+	parser.add_argument("--network", metavar="NAME", required=True, help="Name of the model to load.")
+	parser.add_argument("--group-index", metavar="N", type=int, help="Our index in the work group.")
 	args = parser.parse_args()
 
-	network_path = args.network
-	network_name = os.path.split(network_path)[1]
+#	network_path = train.model_path(args.network)
+	network_name = args.network
 
-	engine.initialize_model(network_path)
+	#engine.initialize_model(network_path)
+	engine.setup_evaluator(use_rpc=True)
 	output_directory = os.path.join("games", network_name)
 	if not os.path.exists(output_directory):
 		os.mkdir(output_directory)
 	output_path = os.path.join(output_directory, os.urandom(8).encode("hex") + ".json")
-	print "Writing to:", output_path
+	print "[%3i] Writing to: %s" % (args.group_index, output_path)
 
 	with open(output_path, "w") as f:
 		while True:
 			entry = generate_game()
-			print "Generated a %i ply game with result %i." % (len(entry["boards"]), entry["result"])
+			print "[%3i] Generated a %i ply game with result %i." % (args.group_index, len(entry["boards"]), entry["result"])
 			json.dump(entry, f)
 			f.write("\n")
 			f.flush()

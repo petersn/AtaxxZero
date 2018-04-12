@@ -7,32 +7,12 @@ import ataxx_rules
 import engine
 import model
 
-"""
- 92     "def apply_symmetry(feature_arr, target_arr):\n",
- 93     "    assert feature_arr.shape == (19, 19, FEATURE_COUNT)\n",
- 94     "    assert target_arr.shape == (19, 19)\n",
- 95     "    # Break views.\n",
- 96     "    feature_arr = np.array(feature_arr)\n",
- 97     "    target_arr = np.array(target_arr)\n",
- 98     "    coin = lambda: random.choice((False, True))\n",
- 99     "    if coin():\n",
-100     "        feature_arr = feature_arr[::-1,:,:]\n",
-101     "        target_arr  = target_arr [::-1,:]\n",
-102     "    if coin():\n",
-103     "        feature_arr = feature_arr[:,::-1,:]\n",
-104     "        target_arr  = target_arr [:,::-1]\n",
-105     "    if coin():\n",
-106     "        feature_arr = np.swapaxes(feature_arr, 0, 1)\n",
-107     "        target_arr  = np.swapaxes(target_arr,  0, 1)\n",
-108     "    assert feature_arr.shape == (19, 19, FEATURE_COUNT)\n",
-109     "    assert target_arr.shape == (19, 19)\n",
-110     "    return feature_arr, target_arr"
-"""
-
 def apply_symmetry(index, arr):
 	assert len(arr.shape) == 3 and arr.shape[:2] == (model.BOARD_SIZE, model.BOARD_SIZE)
 	assert index in xrange(8)
 	coin1, coin2, coin3 = index & 1, (index >> 1) & 1, (index >> 2) & 1
+	# Break views to avoid mutating our input.
+	arr = np.array(arr)
 	if coin1:
 		arr = arr[::-1,:,:]
 	if coin2:
@@ -83,7 +63,7 @@ if __name__ == "__main__":
 	parser.add_argument("--new-name", metavar="NAME", required=True, help="Name for output network.")
 	parser.add_argument("--steps", metavar="COUNT", type=int, default=1000, help="Training steps.")
 	parser.add_argument("--minibatch-size", metavar="COUNT", type=int, default=512, help="Minibatch size.")
-	parser.add_argument("--learning-rate", metavar="LR", type=float, default=0.01, help="Learning rate.")
+	parser.add_argument("--learning-rate", metavar="LR", type=float, default=0.005, help="Learning rate.")
 	args = parser.parse_args()
 	print "Arguments:", args
 
@@ -113,6 +93,10 @@ if __name__ == "__main__":
 		return batch
 
 	in_sample_val_set = make_minibatch(1024)
+
+	print
+	print "Have %i augmented samples, and sampling %i in total." % (ply_count * 8, args.steps * args.minibatch_size)
+	print "=== BEGINNING TRAINING ==="
 
 	# Begin training.
 	for step_number in xrange(args.steps):

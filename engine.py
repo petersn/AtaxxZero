@@ -21,6 +21,16 @@ def initialize_model(path):
 	model.load_model(network, path)
 	initialized = True
 
+def setup_evaluator(use_rpc=False):
+	global global_evaluator
+	if use_rpc:
+		print "Using RPC evaluator."
+		import rpc_client
+		rpc_client.setup_rpc()
+		global_evaluator = rpc_client.RPCEvaluator()
+	else:
+		global_evaluator = NNEvaluator()
+
 def softmax(logits):
 	"""Somewhat numerically stable softmax routine."""
 	e_x = np.exp(logits - np.max(logits))
@@ -161,8 +171,6 @@ class NNEvaluator:
 		if len(self.cache) > NNEvaluator.MAXIMUM_CACHE_ENTRIES:
 			logging.debug("Emptying cache!")
 			self.cache = {}
-
-global_evaluator = NNEvaluator()
 
 class MCTSEdge:
 	def __init__(self, move, child_node, parent_node=None):
