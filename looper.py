@@ -35,6 +35,7 @@ def generate_games(model_name):
 		["python", "gpu_server.py", model_name, "6000"],
 		stdout=open("/dev/null"),
 		preexec_fn=os.setsid,
+		close_fds=True,
 	)
 	def _(server_proc):
 		atexit.register(lambda: kill(server_proc))
@@ -54,6 +55,7 @@ def generate_games(model_name):
 	launch_proc = subprocess.Popen(
 		["./launch.sh", model_name],
 		preexec_fn=os.setsid,
+		close_fds=True,
 	)
 	def _(launch_proc):
 		atexit.register(lambda: kill(launch_proc))
@@ -83,7 +85,7 @@ def train_model(old_name, new_name):
 			"--games", os.path.join("games", old_name),
 			"--old-name", old_name,
 			"--new-name", new_name,
-	])
+	], close_fds=True)
 
 def index_to_model_name(i):
 	return "model-%03i" % i

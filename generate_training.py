@@ -58,6 +58,7 @@ if __name__ == "__main__":
 	parser.add_argument("--random-play", action="store_true", help="Generate games by totally random play.")
 	parser.add_argument("--die-if-present", metavar="PATH", default=None, type=str, help="Die once a file is present at the target path.")
 	parser.add_argument("--show-game", action="store_true", help="Show the game while it's generating.")
+	parser.add_argument("--game-count", metavar="N", default=None, type=int, help="Maximum number of games to generate.")
 	args = parser.parse_args()
 
 	network_path = train.model_path(args.network)
@@ -78,10 +79,15 @@ if __name__ == "__main__":
 	print "[%3i] Writing to: %s" % (args.group_index, output_path)
 
 	with open(output_path, "w") as f:
+		games_generated = 0
 		while True:
 			entry = generate_game(args)
 			print "[%3i] Generated a %i ply game with result %i." % (args.group_index, len(entry["boards"]), entry["result"])
 			json.dump(entry, f)
 			f.write("\n")
 			f.flush()
+			games_generated += 1
+			if args.game_count != None and games_generated >= args.game_count:
+				print "Done generating games."
+				break
 
