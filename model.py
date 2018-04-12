@@ -7,7 +7,7 @@ import tensorflow as tf
 product = lambda l: reduce(lambda x, y: x * y, l, 1)
 
 BOARD_SIZE = 7
-MOVE_TYPES = 24
+MOVE_TYPES = 17
 
 class Network:
 	INPUT_FEATURE_COUNT = 4

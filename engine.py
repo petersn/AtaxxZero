@@ -59,6 +59,8 @@ def board_to_features(board):
 	return features
 
 position_delta_layers = {delta: i for i, delta in enumerate(ataxx_rules.FAR_NEIGHBOR_OFFSETS)}
+assert len(position_delta_layers) == 16
+FAR_NEIGHBOR_OFFSETS_SET = frozenset(ataxx_rules.FAR_NEIGHBOR_OFFSETS)
 
 def encode_move_as_heatmap(move):
 	heatmap = np.zeros(
@@ -67,23 +69,31 @@ def encode_move_as_heatmap(move):
 	)
 	# TODO: DRY this with the below code.
 	start, end = move
-	delta = end[0] - start[0], end[1] - start[1]
-	layer = position_delta_layers[delta]
-	heatmap[start[0], start[1], layer] = 1
+	if start == "c":
+		heatmap[end[0], end[1], model.MOVE_TYPES - 1] = 1
+	else:
+		delta = end[0] - start[0], end[1] - start[1]
+		layer = position_delta_layers[delta]
+		heatmap[end[0], end[1], layer] = 1
+	assert heatmap.sum() == 1
 	return heatmap
 
 def get_move_score(softmaxed_posterior, move):
-	assert softmaxed_posterior.shape == (7, 7, 24)
+	assert softmaxed_posterior.shape == (7, 7, 17)
 	if move == "pass":
 		return 1.0
 	# TODO: DRY this with the above code.
 	start, end = move
-	delta = end[0] - start[0], end[1] - start[1]
-	layer = position_delta_layers[delta]
-	return softmaxed_posterior[start[0], start[1], layer]
+	# Clone moves are handled separately.
+	if start == "c":
+		return softmaxed_posterior[end[0], end[1], model.MOVE_TYPES - 1]
+	else:
+		delta = end[0] - start[0], end[1] - start[1]
+		layer = position_delta_layers[delta]
+		return softmaxed_posterior[end[0], end[1], layer]
 
 class NNEvaluator:
-	ENSEMBLE_SIZE = 32
+	ENSEMBLE_SIZE = 16
 	QUEUE_DEPTH = 4096
 	PROBABILITY_THRESHOLD = 0.09
 	MAXIMUM_CACHE_ENTRIES = 200000
@@ -184,15 +194,16 @@ class MCTSEdge:
 
 	def get_edge_score(self):
 #		return self.edge_total_score / (self.edge_visits * (self.edge_visits + 1.0) / 2.0)
-		return self.edge_total_score / self.total_weight
+#		return self.edge_total_score / self.total_weight
+		return self.edge_total_score / self.edge_visits
 
 	def adjust_score(self, new_score):
-#		self.edge_visits += 1
-#		self.edge_total_score += new_score * self.edge_visits
 		self.edge_visits += 1
-		weight = (2 + self.edge_visits) ** MCTS.VISIT_WEIGHT_EXPONENT
-		self.edge_total_score += new_score * weight
-		self.total_weight += weight
+		self.edge_total_score += new_score
+#		self.edge_visits += 1
+#		weight = (2 + self.edge_visits) ** MCTS.VISIT_WEIGHT_EXPONENT
+#		self.edge_total_score += new_score * weight
+#		self.total_weight += weight
 
 	def __str__(self):
 		return "<%s %4.1f%% v=%i s=%.5f c=%i>" % (
@@ -264,8 +275,8 @@ class TopN:
 		#self.entries = sorted(self.entries + list(items), key=self.key)[-self.N:]
 
 class MCTS:
-	exploration_parameter = 1.5 * 2.0
-	VISIT_WEIGHT_EXPONENT = 2.0
+	exploration_parameter = 3.0
+#	VISIT_WEIGHT_EXPONENT = 2.0
 
 	def __init__(self, root_board):
 		self.root_node = MCTSNode(root_board)
@@ -329,18 +340,6 @@ class MCTS:
 		if not edges_on_path:
 			self.write_graph()
 			logging.debug("WARNING no edges on path!")
-			logging.debug(`node`)
-			logging.debug(`self.root_node`)
-			logging.debug(`node is self.root_node`)
-			logging.debug(`move`)
-			logging.debug(`self.root_node.board`)
-			logging.debug(`self.root_node.board.evaluations.posterior`)
-			#logging.debug(`self.root_node.board.ML_solid_outcome`)
-			logging.debug(`self.root_node.board.result(claim_draw=True)`)
-			logging.debug(`getattr(self.root_node.board, "is_root", "hahabad")`)
-			logging.debug(`list(self.root_node.board.legal_moves)`)
-			logging.debug(`self.root_node.parent`)
-			logging.debug("DONE. Crashing now.")
 		# The final value of edge encodes the very first edge out of the root.
 		return edge
 

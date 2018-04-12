@@ -14,7 +14,7 @@ FEATURES_SHAPE = model.BOARD_SIZE, model.BOARD_SIZE, model.Network.INPUT_FEATURE
 
 class Processor:
 	MAXIMUM_WAIT_TIME = 0.01
-	MARSHALL_COUNT    = 16
+	MARSHALL_COUNT    = 8
 
 	def __init__(self):
 		self.empty()
@@ -47,7 +47,7 @@ class Processor:
 		assert values.dtype == numpy.float32
 		for slot, posterior, (value,) in zip(self.accumulated_slots, posteriors, values):
 			posterior_string = posterior.tostring()
-			assert len(posterior_string) == 1176 * 4
+			assert len(posterior_string) == (7 * 7 * 17) * 4
 			value = float(value)
 			slot.set((posterior_string, value))
 

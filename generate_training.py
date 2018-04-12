@@ -7,30 +7,45 @@ import train
 
 STEP_COUNT = 100
 TEMPERATURE = 0.1
+TOTALLY_RANDOM_PROB = 0.005
 
-def generate_game():
+def generate_game(args):
 	board = ataxx_rules.AtaxxState.initial()
-	m = engine.MCTS(board)
+	if not args.random_play:
+		m = engine.MCTS(board)
 	entry = {"boards": [], "moves": []}
 	plies = 0
 	while True:
-		# Do steps until the root is sufficiently visited.
-		while m.root_node.all_edge_visits < STEP_COUNT:
-			m.step()
-		# Pick a move with noise.
-		scores = {
-			edge: (edge.edge_visits / m.root_node.all_edge_visits) + random.normalvariate(0, TEMPERATURE)
-			for edge in m.root_node.outgoing_edges.itervalues()
-		}
-		edge = max(scores.iterkeys(), key=lambda edge: scores[edge])
+		if args.random_play or random.random() < TOTALLY_RANDOM_PROB:
+			selected_move = random.choice(board.legal_moves())
+		else:
+			# Do steps until the root is sufficiently visited.
+			while m.root_node.all_edge_visits < STEP_COUNT:
+				m.step()
+			# Pick a move with noise.
+			scores = {}
+			for move in m.root_node.board.legal_moves():
+				scores[move] = 0.0
+				if move in m.root_node.outgoing_edges:
+					edge = m.root_node.outgoing_edges[move]
+					scores[move] = edge.edge_visits / float(m.root_node.all_edge_visits)
+				scores[move] += random.normalvariate(0, TEMPERATURE)
+			selected_move = max(scores.iterkeys(), key=lambda move: scores[move])
 		entry["boards"].append(list(board.board[:]))
-		entry["moves"].append(edge.move)
+		entry["moves"].append(selected_move)
 		# Execute the move.
 		plies += 1
-		m.play(board.to_move, edge.move)
-		board.move(edge.move)
+		if not args.random_play:
+			m.play(board.to_move, selected_move)
+		board.move(selected_move)
 		if board.result() != None:
 			break
+		if args.show_game:
+			print board
+			raw_input(">")
+		if args.die_if_present and os.path.exists(args.die_if_present):
+			print "Exiting due to signal file!"
+			exit()
 	entry["result"] = board.result()
 	return entry
 
@@ -38,14 +53,24 @@ if __name__ == "__main__":
 	import argparse
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--network", metavar="NAME", required=True, help="Name of the model to load.")
-	parser.add_argument("--group-index", metavar="N", type=int, help="Our index in the work group.")
+	parser.add_argument("--group-index", metavar="N", default=0, type=int, help="Our index in the work group.")
+	parser.add_argument("--use-rpc", action="store_true", help="Use RPC for NN evaluation.")
+	parser.add_argument("--random-play", action="store_true", help="Generate games by totally random play.")
+	parser.add_argument("--die-if-present", metavar="PATH", default=None, type=str, help="Die once a file is present at the target path.")
+	parser.add_argument("--show-game", action="store_true", help="Show the game while it's generating.")
 	args = parser.parse_args()
 
-#	network_path = train.model_path(args.network)
+	network_path = train.model_path(args.network)
 	network_name = args.network
 
-	#engine.initialize_model(network_path)
-	engine.setup_evaluator(use_rpc=True)
+	if args.random_play:
+		print "Doing random play! Loading no model, and not using RPC."
+	elif args.use_rpc:
+		engine.setup_evaluator(use_rpc=True)
+	else:
+		engine.setup_evaluator(use_rpc=False)
+		engine.initialize_model(network_path)
+
 	output_directory = os.path.join("games", network_name)
 	if not os.path.exists(output_directory):
 		os.mkdir(output_directory)
@@ -54,7 +79,7 @@ if __name__ == "__main__":
 
 	with open(output_path, "w") as f:
 		while True:
-			entry = generate_game()
+			entry = generate_game(args)
 			print "[%3i] Generated a %i ply game with result %i." % (args.group_index, len(entry["boards"]), entry["result"])
 			json.dump(entry, f)
 			f.write("\n")
