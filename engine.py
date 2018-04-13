@@ -5,6 +5,7 @@ import numpy as np
 import tensorflow as tf
 import ataxx_rules
 import model
+import uai_interface
 
 RED  = "\x1b[91m"
 ENDC = "\x1b[0m"
@@ -169,6 +170,9 @@ class NNEvaluator:
 		if board not in self:
 			self.evaluate(board)
 		entry = self.cache[NNEvaluator.board_key(board)]
+		# XXX: I think I do this separated out result adjustment thing in case there are properties like 3 fold repetition,
+		# but in that case I shouldn't be mutating the cached entry! Uh oh. I really have to look into this later.
+
 		# Evaluate special value adjustments.
 		result = board.result()
 		if result != None:
@@ -207,7 +211,7 @@ class MCTSEdge:
 
 	def __str__(self):
 		return "<%s %4.1f%% v=%i s=%.5f c=%i>" % (
-			str(self.move),
+			uai_interface.uai_encode_move(self.move),
 			100.0 * self.parent_node.board.evaluations.posterior[self.move],
 			self.edge_visits,
 			self.get_edge_score(),
@@ -275,7 +279,7 @@ class TopN:
 		#self.entries = sorted(self.entries + list(items), key=self.key)[-self.N:]
 
 class MCTS:
-	exploration_parameter = 3.0
+	exploration_parameter = 1.0
 #	VISIT_WEIGHT_EXPONENT = 2.0
 
 	def __init__(self, root_board):
@@ -310,7 +314,27 @@ class MCTS:
 		# 2) If the move is non-null, expand once.
 		if move != None:
 			new_board = node.board.copy()
-			new_board.move(move)
+			try:
+				new_board.move(move)
+			except AssertionError, e:
+				import sys
+				print >>sys.stderr, node.board
+				print >>sys.stderr, node.board.legal_moves()
+				print >>sys.stderr, move in node.board.legal_moves()
+				print >>sys.stderr, new_board
+				print >>sys.stderr, new_board.legal_moves()
+				print >>sys.stderr, move in new_board.legal_moves()
+				print >>sys.stderr, self.root_node.outgoing_edges
+				print >>sys.stderr, self.root_node.all_edge_visits
+				print >>sys.stderr, self.root_node.select_action()
+				print >>sys.stderr, self.root_node.board.evaluations.posterior
+				print >>sys.stderr, self.root_node.board.evaluations.value
+				del self.root_node.board.evaluations
+				global_evaluator.populate(self.root_node.board)
+				print >>sys.stderr, self.root_node.board.evaluations.posterior
+				print >>sys.stderr, self.root_node.board.evaluations.value
+				print >>sys.stderr, "Move:", move
+				raise e
 			new_node = MCTSNode(new_board, parent=node)
 			new_node.graph_name_suffix = to_move_name(move)
 			new_edge = node.outgoing_edges[move] = MCTSEdge(move, new_node, parent_node=node)
@@ -447,9 +471,9 @@ class MCTSEngine:
 				if (step_number + 1) % 1000 == 0:
 					self.print_principal_variation()
 		logging.debug("Completed %i steps." % total_steps)
-		logging.debug("Exploration histogram: %s" % (
-			" ".join(
-				str(edge)
+		logging.debug("Exploration histogram:\n%s" % (
+			"\n".join(
+				"    " + str(edge)
 				for edge in sorted(
 					self.mcts.root_node.outgoing_edges.itervalues(),
 					key=lambda edge: -edge.edge_visits,
@@ -480,7 +504,7 @@ class MCTSEngine:
 		logging.debug("PV [%2i]: %s" % (
 			len(pv),
 			" ".join(
-				["%s", RED + "%s" + ENDC][i % 2] % (edge.move,)
+				["%s", RED + "%s" + ENDC][i % 2] % (uai_interface.uai_encode_move(edge.move),)
 				for i, edge in enumerate(pv)
 			),
 		))
@@ -491,7 +515,8 @@ if __name__ == "__main__":
 		format="[%(process)5d] %(message)s",
 		level=logging.DEBUG,
 	)
-	initialize_model()
+	initialize_model("models/model-001.npy")
+	setup_evaluator()
 	engine = MCTSEngine()
 	for _ in xrange(2):
 		print "Doing warmup evaluation."

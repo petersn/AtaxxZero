@@ -48,6 +48,16 @@ class AtaxxState:
 		board[0, SIZE - 1] = 2
 		return board
 
+	@staticmethod
+	def from_fen(fen):
+		arr = array.array("b", [0] * (SIZE * SIZE))
+		index = 0
+		board_state_string, turn_to_move = fen.split(" ")
+		rows = 0
+		for c in board_state_string:
+			index += 1
+#		board = AtaxxState(
+
 	def copy(self):
 		return AtaxxState(self.board[:], self.to_move, self.legal_moves_cache)
 
@@ -59,17 +69,35 @@ class AtaxxState:
 		x, y = index
 		return self.board[x + y * SIZE]
 
+	def __eq__(self, other):
+		return self.to_move == other.to_move and self.board == other.board
+
 	def __str__(self):
 		return "\n".join(
 			" ".join(
 				"#" if (x, y) in BLOCKED_CELLS else
-				{0: ".", 1: RED + "O" + ENDC, 2: BLUE + "O" + ENDC}[self[x, y]]
+				{0: ".", 1: RED + "X" + ENDC, 2: BLUE + "O" + ENDC}[self[x, y]]
 				for x in xrange(SIZE)
 			)
 			for y in xrange(SIZE)
 		)
 
+	def fen(self):
+		s = "/".join(
+			"".join(
+				"-" if (x, y) in BLOCKED_CELLS else
+				{0: ".", 1: "x", 2: "o"}[self[x, y]]
+				for x in xrange(SIZE)
+			)
+			for y in xrange(SIZE)
+		) + " " + {1: "x", 2: "o"}[self.to_move]
+		for i in range(1, SIZE + 1)[::-1]:
+			s = s.replace("."*i, str(i))
+		return s
+
 	def move(self, desc):
+		if hasattr(self, "evaluations"):
+			raise Exception("BAD")
 		self.legal_moves_cache = None
 		if desc == "pass":
 			self.to_move = OTHER_PLAYER[self.to_move]

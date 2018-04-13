@@ -62,13 +62,13 @@ class Network:
 		#self.stack_convolution(1, self.FILTERS, self.OUTPUT_CONV_FILTERS, batch_normalization=False)
 
 	def build_policy_head(self):
-		weights = self.new_weight_variable([self.CONV_SIZE, self.CONV_SIZE, self.FILTERS, MOVE_TYPES])
+		weights = self.new_weight_variable([1, 1, self.FILTERS, MOVE_TYPES])
 		self.policy_output = tf.nn.conv2d(self.flow, weights, strides=[1, 1, 1, 1], padding="SAME")
 #		self.policy_output = tf.reshape(self.policy_output, [-1, BOARD_SIZE * BOARD_SIZE, MOVE_TYPES])
 #		self.policy_output = tf.matrix_transpose(self.policy_output)
 
 	def build_value_head(self):
-		weights = self.new_weight_variable([self.CONV_SIZE, self.CONV_SIZE, self.FILTERS, self.VALUE_FILTERS])
+		weights = self.new_weight_variable([1, 1, self.FILTERS, self.VALUE_FILTERS])
 		value_layer = tf.nn.conv2d(self.flow, weights, strides=[1, 1, 1, 1], padding="SAME")
 		value_layer = tf.reshape(value_layer, [-1, BOARD_SIZE * BOARD_SIZE * self.VALUE_FILTERS])
 		fc_w = self.new_weight_variable([BOARD_SIZE * BOARD_SIZE, 1])
@@ -90,7 +90,7 @@ class Network:
 		reg_variables = tf.trainable_variables(scope=self.scope_name)
 		self.regularization_term = tf.contrib.layers.apply_regularization(regularizer, reg_variables)
 		# Loss is the sum of these three.
-		self.loss = self.policy_loss + self.value_loss + self.regularization_term
+		self.loss = 0.3 * self.policy_loss + self.value_loss + self.regularization_term
 
 		# Associate batch normalization with training.
 		update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=self.scope_name)

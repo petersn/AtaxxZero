@@ -1,5 +1,9 @@
 #!/usr/bin/python
 
+## Workaround?
+#import gevent.hub
+#gevent.hub.Hub.backend = "poll"
+
 import numpy
 import Queue, threading, time, random, sys, hashlib
 import gevent.event, gevent.queue, gevent.server
@@ -32,8 +36,8 @@ class Processor:
 		assert len(self.accumulated_features) == len(self.accumulated_slots)
 
 		batch_size = len(self.accumulated_features)
-		if random.random() < 0.001:
-			print "Evaluating batch of size:", batch_size
+#		if random.random() < 0.001:
+#			print "Evaluating batch of size:", batch_size
 
 		# Do the actual processing here!
 		posteriors, values = engine.sess.run(

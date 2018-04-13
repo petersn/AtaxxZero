@@ -6,8 +6,11 @@
 
 import os, glob, signal, subprocess, socket, atexit, time
 
-GAME_COUNT = 1000
-TRAINING_STEPS = 3000
+GAME_COUNT = 5000
+TRAINING_STEPS = 5000
+
+# XXX: This is messy crap I don't like...
+RESET_RUN_LENGTH = 10
 
 def count_games(paths):
 	total_games = 0
@@ -48,7 +51,7 @@ def generate_games(model_name):
 			break
 		except socket.error:
 			print "Couldn't connect..."
-		time.sleep(0.1)
+		time.sleep(0.25)
 	else:
 		print "ERROR: Couldn't connect to GPU server!"
 
@@ -62,12 +65,22 @@ def generate_games(model_name):
 	_(launch_proc)
 
 	# We now periodically check up on how many games we have.
+	game_counts = []
 	while True:
 		game_count = count_games(glob.glob(os.path.join(game_directory, "*.json")))
+		game_counts.append(game_count)
 		print "Game count:", game_count
 		time.sleep(10)
 		if game_count >= GAME_COUNT:
 			break
+		if len(game_counts) > RESET_RUN_LENGTH:
+			if game_counts[-RESET_RUN_LENGTH:] == game_counts[-1:] * RESET_RUN_LENGTH:
+				print "BAD"
+				kill(server_proc)
+				kill(launch_proc)
+				time.sleep(10)
+				print "Yielding false..."
+				return False
 
 	# Create the signal file.
 	print "Creating kill file."
@@ -77,6 +90,7 @@ def generate_games(model_name):
 	kill(server_proc)
 	kill(launch_proc)
 	print "Exiting."
+	return True
 
 def train_model(old_name, new_name):
 	subprocess.check_call([
@@ -98,7 +112,11 @@ if __name__ == "__main__":
 		new_model = index_to_model_name(current_model_number + 1)
 		print "=========================== Doing data generation for:", old_model
 		print "Start time:", start
-		generate_games(old_model)
+		while True:
+			result = generate_games(old_model)
+			if result:
+				break
+			print "BAD --- Restarting."
 		print "=========================== Doing training:", old_model, "->", new_model
 		train_model(old_model, new_model)
 		end = time.time()
