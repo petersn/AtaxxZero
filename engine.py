@@ -405,7 +405,7 @@ class MCTSEngine:
 		9: 0.9,
 	}
 	# XXX: This is awful. Switch this over to run-time benchmarking.
-	MAX_STEPS_PER_SECOND = 375.0
+	MAX_STEPS_PER_SECOND = 1000.0
 
 	def __init__(self):
 		self.state = ataxx_rules.AtaxxState.initial()

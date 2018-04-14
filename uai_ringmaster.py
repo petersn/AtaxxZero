@@ -1,8 +1,10 @@
 #!/usr/bin/python
 
-import string, subprocess, atexit
+import random, string, subprocess, atexit
 import uai_interface
 import ataxx_rules
+
+OPENING_DEPTH = 4
 
 class UAIPlayer:
 	def __init__(self, cmd):
@@ -28,9 +30,9 @@ class UAIPlayer:
 		self.send("moves %s\n" % uai_interface.uai_encode_move(move))
 
 	def genmove(self, time=1000):
-		if ("uai_interface" in " ".join(self.cmd)) or True:
-			print "More time alotted."
-			time *= 5
+#		if ("uai_interface" in " ".join(self.cmd)) or True:
+#			print "More time alotted."
+#			time *= 5
 		self.send("go movetime %i\n" % time)
 		while True:
 			line = self.proc.stdout.readline().strip()
@@ -52,7 +54,7 @@ class UAIPlayer:
 		s = s.replace("O", ataxx_rules.BLUE + "O" + ataxx_rules.ENDC)
 		return s
 
-def play_one_game(args, swap=False):
+def play_one_game(args, opening_moves, swap=False):
 	players = [
 		UAIPlayer(args.command1),
 		UAIPlayer(args.command2),
@@ -60,7 +62,7 @@ def play_one_game(args, swap=False):
 	if swap:
 		players.reverse()
 
-	print "Launching."
+	print "Launching with opening: [%s]" % (", ".join(uai_interface.uai_encode_move(move) for move in opening_moves),)
 	board = ataxx_rules.AtaxxState.initial()
 	ply_number = 0
 	while board.result() == None:
@@ -70,7 +72,9 @@ def play_one_game(args, swap=False):
 		print board.fen()
 		print board
 		# If there is only one legal move then force it.
-		if len(board.legal_moves()) == 1:
+		if ply_number < len(opening_moves):
+			move = opening_moves[ply_number]
+		elif len(board.legal_moves()) == 1:
 			move, = board.legal_moves()
 		else:
 			move = players[ply_number % 2].genmove()
@@ -100,7 +104,15 @@ if __name__ == "__main__":
 
 	swap = False
 	while True:
-		outcome = play_one_game(args, swap=swap)
+		if not swap:
+			opening = ataxx_rules.AtaxxState.initial()
+			opening_moves = []
+			for _ in xrange(OPENING_DEPTH):
+				move = random.choice(opening.legal_moves())
+				opening_moves.append(move)
+				opening.move(move)
+
+		outcome = play_one_game(args, opening_moves=opening_moves, swap=swap)
 		swap = not swap
 		win_counter[outcome] += 1
 		print "Wins: %i - %i (%s - %s)" % (win_counter[1], win_counter[2], args.command1, args.command2)
