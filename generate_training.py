@@ -7,10 +7,10 @@ import train
 import uai_ringmaster
 
 #STEP_COUNT = 200
-VISIT_COUNT = 100
-MAX_STEP_COUNT = 1000
-TEMPERATURE = 0.05
-TOTALLY_RANDOM_PROB = 0.05
+VISIT_COUNT = 400
+MAX_STEP_COUNT = 4000
+TEMPERATURE = 0.04
+TOTALLY_RANDOM_PROB = 0.02
 
 def generate_game(args):
 	board = ataxx_rules.AtaxxState.initial()
@@ -53,7 +53,7 @@ def generate_game(args):
 						edge = m.root_node.outgoing_edges[move]
 						scores[move] = edge.edge_visits / float(m.root_node.all_edge_visits)
 					scores[move] += random.normalvariate(0, TEMPERATURE)
-				selected_move = max(scores.iterkeys(), key=lambda move: scores[move])
+				best_move = selected_move = max(scores.iterkeys(), key=lambda move: scores[move])
 			prob = TOTALLY_RANDOM_PROB
 			if plies < 8:
 				prob = 0.25
