@@ -62,7 +62,7 @@ def generate_games(model_name):
 		visit_count = FIRST_MODEL_VISIT_COUNT
 
 	launch_proc = subprocess.Popen(
-		["./launch.sh", model_name, visit_count],
+		["./launch.sh", model_name, str(visit_count)],
 		preexec_fn=os.setsid,
 		close_fds=True,
 	)
