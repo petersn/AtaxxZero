@@ -6,8 +6,7 @@ import engine
 import train
 import uai_ringmaster
 
-VISIT_COUNT        = 200
-MAX_STEP_COUNT     = 4000
+MAX_STEP_RATIO     = 10
 MAXIMUM_GAME_PLIES = 400
 LOGIT_TEMPERATURE  = 0.0
 OPENING_RANDOMIZATION_SCHEDULE = [
@@ -47,7 +46,7 @@ def generate_game(args):
 			else:
 				# Do steps until the root is sufficiently visited.
 				most_visits = 0 
-				while most_visits < VISIT_COUNT and m.root_node.all_edge_visits < MAX_STEP_COUNT:
+				while most_visits < args.visit_count and m.root_node.all_edge_visits < args.visit_count * MAX_STEP_RATIO:
 					all_steps += 1
 					edge = m.step()
 					most_visits = max(most_visits, edge.edge_visits)
@@ -97,6 +96,7 @@ if __name__ == "__main__":
 	parser.add_argument("--group-index", metavar="N", default=0, type=int, help="Our index in the work group.")
 	parser.add_argument("--use-rpc", action="store_true", help="Use RPC for NN evaluation.")
 	parser.add_argument("--random-play", action="store_true", help="Generate games by totally random play.")
+	parser.add_argument("--visit-count", metavar="N", default=200, type=int, help="When generating moves for games perform MCTS steps until the PV move has at least N visits.")
 	parser.add_argument("--die-if-present", metavar="PATH", default=None, type=str, help="Die once a file is present at the target path.")
 	parser.add_argument("--show-game", action="store_true", help="Show the game while it's generating.")
 	parser.add_argument("--game-count", metavar="N", default=None, type=int, help="Maximum number of games to generate.")
