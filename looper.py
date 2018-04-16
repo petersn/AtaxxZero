@@ -102,7 +102,7 @@ def index_to_model_name(i):
 	return "model-%03i" % i
 
 if __name__ == "__main__":
-	current_model_number = 1#5
+	current_model_number = 1
 	while True:
 		start = time.time()
 		old_model = index_to_model_name(current_model_number)
