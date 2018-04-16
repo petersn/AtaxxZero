@@ -8,7 +8,7 @@ import uai_ringmaster
 
 VISIT_COUNT        = 200
 MAX_STEP_COUNT     = 4000
-MAXIMUM_GAME_PLIES = 200
+MAXIMUM_GAME_PLIES = 400
 LOGIT_TEMPERATURE  = 0.0
 OPENING_RANDOMIZATION_SCHEDULE = [
 	0.2 * (0.5 ** (i/2))
@@ -82,7 +82,7 @@ def generate_game(args):
 			print "Exiting due to signal file!"
 			exit()
 	entry["result"] = board.result()
-	print "[%3i] Generated a %i ply game (%.2f avg steps) with result %i." % (
+	print "[%3i] Generated a %r ply game (%.2f avg steps) with result %i." % (
 		args.group_index,
 		len(entry["boards"]),
 		all_steps / float(ply + 1),
@@ -131,6 +131,9 @@ if __name__ == "__main__":
 		games_generated = 0
 		while True:
 			entry = generate_game(args)
+			if entry["result"] is None:
+				print "[%3i] Skipping game with null result." % (args.group_index,)
+				continue
 			json.dump(entry, f)
 			f.write("\n")
 			f.flush()
