@@ -81,7 +81,7 @@ def generate_game(args):
 			print "Exiting due to signal file!"
 			exit()
 	entry["result"] = board.result()
-	print "[%3i] Generated a %r ply game (%.2f avg steps) with result %i." % (
+	print "[%3i] Generated a %i ply game (%.2f avg steps) with result %r." % (
 		args.group_index,
 		len(entry["boards"]),
 		all_steps / float(ply + 1),
