@@ -1,12 +1,10 @@
 #!/usr/bin/python
 
-# time python gpu_server.py model-001 6000
-# time ./launch.sh model-001
-# ./train.py --steps 3000 --games games/random-play/ --old-name model-001 --new-name model-002
-
 import os, glob, signal, subprocess, socket, atexit, time
 import train
 
+VISIT_COUNT = 200
+FIRST_MODEL_VISIT_COUNT = 50
 GAME_COUNT = 500
 TRAINING_STEPS = 200
 BONUS_TRAINING_STEPS_PER_ROUND = 100
@@ -59,8 +57,12 @@ def generate_games(model_name):
 	else:
 		print "ERROR: Couldn't connect to GPU server!"
 
+	visit_count = VISIT_COUNT
+	if model_name == "model-001":
+		visit_count = FIRST_MODEL_VISIT_COUNT
+
 	launch_proc = subprocess.Popen(
-		["./launch.sh", model_name],
+		["./launch.sh", model_name, visit_count],
 		preexec_fn=os.setsid,
 		close_fds=True,
 	)
