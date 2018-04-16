@@ -9,6 +9,8 @@ import uai_interface
 
 RED  = "\x1b[91m"
 ENDC = "\x1b[0m"
+DIRICHLET_ALPHA  = 0.15
+DIRICHLET_WEIGHT = 0.25
 
 initialized = False
 
@@ -22,15 +24,15 @@ def initialize_model(path):
 	model.load_model(network, path)
 	initialized = True
 
-def setup_evaluator(use_rpc=False):
+def setup_evaluator(use_rpc=False, temperature=0.0):
 	global global_evaluator
 	if use_rpc:
 		print "Using RPC evaluator."
 		import rpc_client
 		rpc_client.setup_rpc()
-		global_evaluator = rpc_client.RPCEvaluator()
+		global_evaluator = rpc_client.RPCEvaluator(temperature=temperature)
 	else:
-		global_evaluator = NNEvaluator()
+		global_evaluator = NNEvaluator(temperature=temperature)
 
 def softmax(logits):
 	"""Somewhat numerically stable softmax routine."""
@@ -93,6 +95,21 @@ def get_move_score(softmaxed_posterior, move):
 		layer = position_delta_layers[delta]
 		return softmaxed_posterior[end[0], end[1], layer]
 
+def add_noise_to_logits(raw_posterior, temperature):
+	assert raw_posterior.shape == (model.BOARD_SIZE, model.BOARD_SIZE, model.MOVE_TYPES)
+	noise = np.random.randn(model.BOARD_SIZE, model.BOARD_SIZE, model.MOVE_TYPES) * temperature
+	return raw_posterior + noise
+
+def add_dirichlet_noise_to_posterior(posterior, alpha, weight):
+	noise = np.random.dirichlet([alpha] * len(posterior))
+	posterior = {
+		move: (1.0 - weight) * prob + weight * n
+		for (move, prob), n in zip(posterior.iteritems(), noise)
+	}
+	# TODO: Comment this out.
+	assert abs(sum(posterior.itervalues()) - 1) < 1e-3
+	return posterior
+
 class NNEvaluator:
 	ENSEMBLE_SIZE = 16
 	QUEUE_DEPTH = 4096
@@ -100,15 +117,21 @@ class NNEvaluator:
 	MAXIMUM_CACHE_ENTRIES = 200000
 
 	class Entry:
-		__slots__ = ["board", "value", "posterior", "game_over"]
+		__slots__ = ["board", "value", "posterior", "noisy_posterior", "game_over"]
 
 		def __init__(self, board, value, posterior, game_over):
 			self.board = board
 			self.value = value
 			self.posterior = posterior
+			self.noisy_posterior = None
 			self.game_over = game_over
 
-	def __init__(self):
+		def populate_noisy_posterior(self):
+			if self.noisy_posterior is None:
+				self.noisy_posterior = add_dirichlet_noise_to_posterior(self.posterior, DIRICHLET_ALPHA, DIRICHLET_WEIGHT)
+
+	def __init__(self, temperature):
+		self.temperature = temperature
 		self.cache = {}
 		self.board_queue = collections.deque(maxlen=NNEvaluator.QUEUE_DEPTH)
 		self.ensemble_sizes = []
@@ -149,6 +172,7 @@ class NNEvaluator:
 
 		# Write an entry into our cache.
 		for board, raw_posterior, (value,) in zip(ensemble, posteriors, values):
+			raw_posterior = add_noise_to_logits(raw_posterior, self.temperature)
 			softmax_posterior = softmax(raw_posterior)
 			posterior = {move: get_move_score(softmax_posterior, move) for move in board.legal_moves()}
 			# Renormalize the posterior. Add a small epsilon into the denominator to prevent divison by zero.
@@ -194,20 +218,12 @@ class MCTSEdge:
 		self.edge_visits = 0
 		self.edge_total_score = 0
 
-		self.total_weight = 0
-
 	def get_edge_score(self):
-#		return self.edge_total_score / (self.edge_visits * (self.edge_visits + 1.0) / 2.0)
-#		return self.edge_total_score / self.total_weight
 		return self.edge_total_score / self.edge_visits
 
 	def adjust_score(self, new_score):
 		self.edge_visits += 1
 		self.edge_total_score += new_score
-#		self.edge_visits += 1
-#		weight = (2 + self.edge_visits) ** MCTS.VISIT_WEIGHT_EXPONENT
-#		self.edge_total_score += new_score * weight
-#		self.total_weight += weight
 
 	def __str__(self):
 		return "<%s %4.1f%% v=%i s=%.5f c=%i>" % (
@@ -236,16 +252,19 @@ class MCTSNode:
 			Q_score = 0.0
 		return Q_score + u_score
 
-	def select_action(self, continue_even_if_game_over=False):
+	def select_action(self, use_dirichlet_noise):
 		global_evaluator.populate(self.board)
 		# If we have no legal moves then return None.
 		if not self.board.evaluations.posterior:
 			return
-			#logging.debug("Board state with no variations: %s" % (self.board.fen(),))
-		# If the game is over and we're not supposed to continue then return None.
-		if self.board.evaluations.game_over and not continue_even_if_game_over:
+		# If the game is over then return None.
+		if self.board.evaluations.game_over:
 			return
-		return max(self.board.evaluations.posterior, key=self.total_action_score)
+		posterior = self.board.evaluations.posterior
+		if use_dirichlet_noise:
+			self.board.evaluations.populate_noisy_posterior()
+			posterior = self.board.evaluations.noisy_posterior
+		return max(posterior, key=self.total_action_score)
 
 	def graph_name(self, name_cache):
 		if self not in name_cache:
@@ -272,18 +291,16 @@ class TopN:
 			self.entries += [item]
 		self.entries = sorted(self.entries, key=self.key)[-self.N:]
 
-	# Ugly, DRY this, but performance?
 	def update(self, items):
 		for i in items:
 			self.add(i)
-		#self.entries = sorted(self.entries + list(items), key=self.key)[-self.N:]
 
 class MCTS:
 	exploration_parameter = 1.0
-#	VISIT_WEIGHT_EXPONENT = 2.0
 
-	def __init__(self, root_board):
-		self.root_node = MCTSNode(root_board)
+	def __init__(self, root_board, use_dirichlet_noise=False):
+		self.root_node = MCTSNode(root_board.copy())
+		self.use_dirichlet_noise = use_dirichlet_noise
 
 	def select_principal_variation(self, best=False):
 		node = self.root_node
@@ -294,11 +311,10 @@ class MCTS:
 					break
 				move = max(node.outgoing_edges.itervalues(), key=lambda edge: edge.edge_visits).move
 			else:
-				# XXX: TODO: Document this logic here properly.
-				# Basically, the gist is that sometimes UCI masters will ask to generate a move when the root is already finished (e.g., a draw can be claimed).
-				# Rather than just reporting a totally random move we instead ignore that the game is over.
-				continue_even_if_game_over = node == self.root_node
-				move = node.select_action(continue_even_if_game_over=continue_even_if_game_over)
+				move = node.select_action(
+					# Use dirichlet noise only if we are configured to, AND only at the root of the search tree.
+					use_dirichlet_noise = self.use_dirichlet_noise and node == self.root_node,
+				)
 			if move not in node.outgoing_edges:
 				break
 			edge = node.outgoing_edges[move]
@@ -391,12 +407,9 @@ class MCTS:
 		return name_cache
 
 class MCTSEngine:
-#	VISITS = 1200 * 2
-#	MAX_STEPS = 12000 * 2
-#	VISITS = 5000
 	VISITS    = 10000000
 	MAX_STEPS = 10000000
-	TIME_SAFETY_MARGIN = 0.150
+	TIME_SAFETY_MARGIN = 0.1
 	IMPORTANCE_FACTOR = {
 		1: 0.1, 2: 0.2,
 		3: 0.3, 4: 0.4,
@@ -440,7 +453,7 @@ class MCTSEngine:
 		for step_number in xrange(self.MAX_STEPS):
 			now = time.time()
 			# Compute remaining time we have left to think.
-			remaining_time = time_to_think - (now - start_time) - self.TIME_SAFETY_MARGIN
+			remaining_time = time_to_think - (now - start_time)
 			if remaining_time <= 0.0 and total_steps > 0:
 				break
 			# If we don't have enough time for the number two option to catch up, early out.
@@ -494,8 +507,8 @@ class MCTSEngine:
 		importance_factor = self.IMPORTANCE_FACTOR.get(self.state.fullmove_number, 1.3)
 		importance_factor *= 1.5
 		time_budget *= importance_factor
-		# Never budget more than 50% of our remaining time.
-		time_budget = min(time_budget, 0.5 * our_time)
+		# Never budget more than 50% of our remaining time, minus a little margin.
+		time_budget = max(0.0, min(time_budget, 0.5 * our_time - self.TIME_SAFETY_MARGIN))
 		logging.debug("Budgeting %.2fms for this move." % (time_budget * 1e3,))
 		return self.genmove(time_budget)
 
@@ -515,7 +528,7 @@ if __name__ == "__main__":
 		format="[%(process)5d] %(message)s",
 		level=logging.DEBUG,
 	)
-	initialize_model("models/model-001.npy")
+	initialize_model("models/model-010.npy")
 	setup_evaluator()
 	engine = MCTSEngine()
 	for _ in xrange(2):

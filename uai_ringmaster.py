@@ -80,8 +80,10 @@ def play_one_game(args, opening_moves, swap=False):
 			move = players[ply_number % 2].genmove()
 		print "Move:", uai_interface.uai_encode_move(move)
 		board.move(move)
+#		for player in players:
+#			player.move(move)
 		for player in players:
-			player.move(move)
+			player.set_state(board)
 		ply_number += 1
 
 	for player in players:

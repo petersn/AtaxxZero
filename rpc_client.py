@@ -12,13 +12,14 @@ def setup_rpc(port=6000):
 	global rpc_connection
 	rpc_connection = mprpc.RPCClient("127.0.0.1", port)
 
-def evaluate(board):
+def evaluate(board, temperature):
 	features = engine.board_to_features(board)
 	assert features.dtype == np.int8
 	feature_string = features.tostring()
 	assert len(feature_string) == model.BOARD_SIZE * model.BOARD_SIZE * model.Network.INPUT_FEATURE_COUNT
 	posterior, value = rpc_connection.call("network", feature_string)
 	raw_posterior = np.fromstring(posterior, dtype=np.float32).reshape((model.BOARD_SIZE, model.BOARD_SIZE, model.MOVE_TYPES))
+	raw_posterior = engine.add_noise_to_logits(raw_posterior, temperature)
 
 	softmax_posterior = engine.softmax(raw_posterior)
 	posterior = {move: engine.get_move_score(softmax_posterior, move) for move in board.legal_moves()}
@@ -29,13 +30,16 @@ def evaluate(board):
 	return posterior, value
 
 class RPCEvaluator:
+	def __init__(self, temperature):
+		self.temperature = temperature
+
 	def populate(self, board):
 		# XXX: This is ugly...
 		if hasattr(board, "evaluations"):
 			return
 
 		# Get an RPC value and posterior.
-		posterior, value = evaluate(board)
+		posterior, value = evaluate(board, self.temperature)
 
 		entry = engine.NNEvaluator.Entry(board=board, value=value, posterior=posterior, game_over=False)
 		# Evaluate special value adjustments.

@@ -6,27 +6,39 @@ import engine
 import train
 import uai_ringmaster
 
-#STEP_COUNT = 200
-VISIT_COUNT = 400
-MAX_STEP_COUNT = 4000
-TEMPERATURE = 0.04
-TOTALLY_RANDOM_PROB = 0.02
+VISIT_COUNT        = 200
+MAX_STEP_COUNT     = 4000
+MAXIMUM_GAME_PLIES = 200
+LOGIT_TEMPERATURE  = 0.0
+OPENING_RANDOMIZATION_SCHEDULE = [
+	0.2 * (0.5 ** (i/2))
+	for i in xrange(10)
+]
+
+def sample_by_weight(weights):
+	assert abs(sum(weights.itervalues()) - 1) < 1e-6, "Distribution not normalized: %r" % (weights,)
+	x = random.random()
+	for outcome, weight in weights.iteritems():
+		if x <= weight:
+			return outcome
+		x -= weight
+	# If we somehow failed to pick anyone due to rounding then return an arbitrary element.
+	return weights.iterkeys().next()
 
 def generate_game(args):
 	board = ataxx_rules.AtaxxState.initial()
 	if not args.random_play:
-		m = engine.MCTS(board.copy())
+		m = engine.MCTS(board.copy(), use_dirichlet_noise=True)
 	entry = {"boards": [], "moves": []}
-	plies = 0
 	all_steps = 0
-	while True:
+	for ply in xrange(MAXIMUM_GAME_PLIES):
 		if args.random_play:
-			best_move = selected_move = random.choice(board.legal_moves())
+			training_move = selected_move = random.choice(board.legal_moves())
 		else:
 			if args.supervised:
 				args.uai_player.set_state(board)
 				try:
-					best_move = selected_move = args.uai_player.genmove(args.supervised_ms)
+					training_move = selected_move = args.uai_player.genmove(args.supervised_ms)
 				except ValueError, e:
 					print "Board state:"
 					print board.fen()
@@ -35,34 +47,25 @@ def generate_game(args):
 			else:
 				# Do steps until the root is sufficiently visited.
 				most_visits = 0 
-#				while m.root_node.all_edge_visits < STEP_COUNT:
 				while most_visits < VISIT_COUNT and m.root_node.all_edge_visits < MAX_STEP_COUNT:
 					all_steps += 1
 					edge = m.step()
 					most_visits = max(most_visits, edge.edge_visits)
-				# Pick a move without noise for training.
-				best_move = max(
-					m.root_node.outgoing_edges.itervalues(),
-					key=lambda edge: edge.edge_visits,
-				).move
 				# Pick a move with noise.
-				scores = {}
-				for move in m.root_node.board.legal_moves():
-					scores[move] = 0.0
-					if move in m.root_node.outgoing_edges:
-						edge = m.root_node.outgoing_edges[move]
-						scores[move] = edge.edge_visits / float(m.root_node.all_edge_visits)
-					scores[move] += random.normalvariate(0, TEMPERATURE)
-				best_move = selected_move = max(scores.iterkeys(), key=lambda move: scores[move])
-			prob = TOTALLY_RANDOM_PROB
-			if plies < 8:
-				prob = 0.25
-			if random.random() < prob:
+				move_weights = {
+					move: edge.edge_visits / float(m.root_node.all_edge_visits)
+					for move, edge in m.root_node.outgoing_edges.iteritems()
+				}
+				training_move = selected_move = sample_by_weight(move_weights)
+
+			randomization_probability = 0.0
+			if ply < len(OPENING_RANDOMIZATION_SCHEDULE):
+				randomization_probability = OPENING_RANDOMIZATION_SCHEDULE[ply]
+			if random.random() < randomization_probability:
 				selected_move = random.choice(board.legal_moves())
 		entry["boards"].append(list(board.board[:]))
-		entry["moves"].append(best_move)
+		entry["moves"].append(training_move)
 		# Execute the move.
-		plies += 1
 		if not args.random_play:
 			m.play(board.to_move, selected_move)
 		board.move(selected_move)
@@ -70,12 +73,21 @@ def generate_game(args):
 			break
 		if args.show_game:
 			print board
+#			engine.global_evaluator.populate(m.root_node.board)
+#			m.root_node.board.evaluations.populate_noisy_posterior()
+#			__import__("pprint").pprint(sorted(m.root_node.board.evaluations.posterior.items(), key=lambda x: x[1]))
+#			__import__("pprint").pprint(sorted(m.root_node.board.evaluations.noisy_posterior.items(), key=lambda x: x[1]))
 			raw_input(">")
 		if args.die_if_present and os.path.exists(args.die_if_present):
 			print "Exiting due to signal file!"
 			exit()
 	entry["result"] = board.result()
-	print "[%3i] Generated a %i ply game (%.2f avg steps) with result %i." % (args.group_index, len(entry["boards"]), all_steps / float(plies), entry["result"])
+	print "[%3i] Generated a %i ply game (%.2f avg steps) with result %i." % (
+		args.group_index,
+		len(entry["boards"]),
+		all_steps / float(ply + 1),
+		entry["result"],
+	)
 	return entry
 
 if __name__ == "__main__":
@@ -99,9 +111,9 @@ if __name__ == "__main__":
 	if args.random_play:
 		print "Doing random play! Loading no model, and not using RPC."
 	elif args.use_rpc:
-		engine.setup_evaluator(use_rpc=True)
+		engine.setup_evaluator(use_rpc=True, temperature=LOGIT_TEMPERATURE)
 	else:
-		engine.setup_evaluator(use_rpc=False)
+		engine.setup_evaluator(use_rpc=False, temperature=LOGIT_TEMPERATURE)
 		engine.initialize_model(network_path)
 
 	if args.supervised != None:

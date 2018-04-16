@@ -5,12 +5,16 @@
 # ./train.py --steps 3000 --games games/random-play/ --old-name model-001 --new-name model-002
 
 import os, glob, signal, subprocess, socket, atexit, time
+import train
 
-GAME_COUNT = 5000
-TRAINING_STEPS = 5000
+GAME_COUNT = 500
+TRAINING_STEPS = 200
+BONUS_TRAINING_STEPS_PER_ROUND = 100
+TRAIN_ROUNDS_INCLUDED = 5
+TRAIN_ROUNDS_MINIMUM = 3
 
 # XXX: This is messy crap I don't like...
-RESET_RUN_LENGTH = 10
+RESET_RUN_LENGTH = 100
 
 def count_games(paths):
 	total_games = 0
@@ -92,24 +96,24 @@ def generate_games(model_name):
 	print "Exiting."
 	return True
 
-def train_model(old_name, new_name):
-	subprocess.check_call([
-		"python", "train.py",
-			"--steps", str(TRAINING_STEPS),
-			"--games", os.path.join("games", old_name),
-			"--old-name", old_name,
-			"--new-name", new_name,
-	], close_fds=True)
+#def train_model(game_dirs, old_name, new_name):
 
 def index_to_model_name(i):
 	return "model-%03i" % i
 
 if __name__ == "__main__":
-	current_model_number = 1
+	current_model_number = 1#5
 	while True:
 		start = time.time()
 		old_model = index_to_model_name(current_model_number)
 		new_model = index_to_model_name(current_model_number + 1)
+
+		# XXX: DRY with train.model_path?
+		if os.path.exists(train.model_path(new_model)):
+			print "Model already exists, skipping:", new_model
+			current_model_number += 1
+			continue
+
 		print "=========================== Doing data generation for:", old_model
 		print "Start time:", start
 		while True:
@@ -118,8 +122,27 @@ if __name__ == "__main__":
 				break
 			print "BAD --- Restarting."
 		print "=========================== Doing training:", old_model, "->", new_model
-		train_model(old_model, new_model)
+		# Figure out the directories of games to train on.
+		low_index = min(current_model_number, max(TRAIN_ROUNDS_MINIMUM, current_model_number - TRAIN_ROUNDS_INCLUDED + 1))
+		high_index = current_model_number
+		game_dirs = [
+			os.path.join("games", index_to_model_name(i))
+			for i in xrange(low_index, high_index + 1)
+		]
+		print "Game directories:", game_dirs
+		steps = TRAINING_STEPS + BONUS_TRAINING_STEPS_PER_ROUND * (len(game_dirs) - 1)
+		print "Steps:", steps
+		subprocess.check_call([
+			"python", "train.py",
+				"--steps", str(steps),
+				"--games"] + game_dirs + [
+				"--old-name", old_model,
+				"--new-name", new_model,
+		], close_fds=True)
+
 		end = time.time()
 		print "Total seconds:", end - start
 		current_model_number += 1
+
+		time.sleep(1)
 

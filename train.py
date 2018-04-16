@@ -87,6 +87,7 @@ def load_entries(paths):
 				if not line:
 					continue
 				entries.append(json.loads(line))
+	random.shuffle(entries)
 	return entries
 
 def model_path(name):
@@ -95,7 +96,7 @@ def model_path(name):
 if __name__ == "__main__":
 	import argparse
 	parser = argparse.ArgumentParser()
-	parser.add_argument("--games", metavar="PATH", required=True, help="Directory with .json self-play games.")
+	parser.add_argument("--games", metavar="PATH", required=True, nargs="+", help="Directory with .json self-play games.")
 	parser.add_argument("--old-name", metavar="NAME", help="Name for input network.")
 	parser.add_argument("--new-name", metavar="NAME", required=True, help="Name for output network.")
 	parser.add_argument("--steps", metavar="COUNT", type=int, default=1000, help="Training steps.")
@@ -104,13 +105,17 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	print "Arguments:", args
 
-	paths = glob.glob(os.path.join(args.games, "*.json"))
+	paths = []
+	for d in args.games:
+		paths.extend(glob.glob(os.path.join(d, "*.json")))
+	# Shuffle the loaded games deterministically.
+	random.seed(123456789)
 	entries = load_entries(paths)
 	ply_count = sum(len(entry["moves"]) for entry in entries)
 	print "Found %i games with %i plies." % (len(entries), ply_count)
 
-	test_entries = entries[:50]
-	train_entries = entries[50:]
+	test_entries = entries[:10]
+	train_entries = entries[10:]
 
 	network = model.Network("training_net/", build_training=True)
 	sess = tf.InteractiveSession()
