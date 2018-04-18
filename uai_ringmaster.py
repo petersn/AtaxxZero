@@ -90,6 +90,8 @@ def play_one_game(args, opening_moves, swap=False):
 #		for player in players:
 #			player.set_state(board)
 		ply_number += 1
+		if args.max_plies != None and ply_number > args.max_plies:
+			return "invalid"
 
 	for player in players:
 		player.send("quit\n")
@@ -109,12 +111,13 @@ if __name__ == "__main__":
 	parser.add_argument("--command2", metavar="CMD")
 	parser.add_argument("--show-games", action="store_true", help="Show the games while they're being generated.")
 	parser.add_argument("--opening", metavar="MOVES", type=str, default=None, help="Comma separated sequence of moves for the opening.")
+	parser.add_argument("--max-plies", metavar="N", type=int, default=None, help="Maximum number of plies in a game before it's aborted and rejected.")
 	args = parser.parse_args()
 	args.command1 = shlex.split(args.command1)
 	args.command2 = shlex.split(args.command2)
 	print "Options:", args
 
-	win_counter = {1: 0, 2: 0}
+	win_counter = {1: 0, 2: 0, "invalid": 0}
 
 	swap = False
 	while True:
@@ -131,5 +134,5 @@ if __name__ == "__main__":
 		outcome = play_one_game(args, opening_moves=opening_moves, swap=swap)
 		swap = not swap
 		win_counter[outcome] += 1
-		print "Wins: %i - %i (%s - %s)" % (win_counter[1], win_counter[2], args.command1, args.command2)
+		print "Wins: %i - %i (invalid: %i) (%s - %s)" % (win_counter[1], win_counter[2], win_counter["invalid"], args.command1, args.command2)
 
