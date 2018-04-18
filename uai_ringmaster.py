@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-import random, string, subprocess, atexit
+import sys, random, string, subprocess, atexit
 import uai_interface
 import ataxx_rules
 
@@ -12,7 +12,7 @@ class UAIPlayer:
 		# WARNING: What I'm doing here is technically invalid!
 		# In theory the output pipe of this process could fill up before I read, making it hang.
 		# TODO: Decide if I care.
-		self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE)
+		self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 		atexit.register(self.proc.kill)
 		self.send("uai\n")
 
@@ -66,11 +66,15 @@ def play_one_game(args, opening_moves, swap=False):
 	board = ataxx_rules.AtaxxState.initial()
 	ply_number = 0
 	while board.result() == None:
-		print
-		print "===================== Player %i move." % (ply_number % 2 + 1,)
-		print "Score: %i - %i" % (board.board.count(1), board.board.count(2))
-		print board.fen()
-		print board
+		if args.show_games:
+			print
+			print "===================== Player %i move." % (ply_number % 2 + 1,)
+			print "[%i plies] Score: %i - %i" % (ply_number, board.board.count(1), board.board.count(2))
+			print board.fen()
+			print board
+		else:
+			print "\r[%i plies] Score: %i - %i" % (ply_number, board.board.count(1), board.board.count(2)),
+			sys.stdout.flush()
 		# If there is only one legal move then force it.
 		if ply_number < len(opening_moves):
 			move = opening_moves[ply_number]
@@ -78,16 +82,20 @@ def play_one_game(args, opening_moves, swap=False):
 			move, = board.legal_moves()
 		else:
 			move = players[ply_number % 2].genmove()
-		print "Move:", uai_interface.uai_encode_move(move)
+		if args.show_games:
+			print "Move:", uai_interface.uai_encode_move(move)
 		board.move(move)
-#		for player in players:
-#			player.move(move)
 		for player in players:
-			player.set_state(board)
+			player.move(move)
+#		for player in players:
+#			player.set_state(board)
 		ply_number += 1
 
 	for player in players:
 		player.send("quit\n")
+
+	if not args.show_games:
+		print
 
 	result = board.result()
 	if swap:
@@ -95,11 +103,15 @@ def play_one_game(args, opening_moves, swap=False):
 	return result
 
 if __name__ == "__main__":
-	import argparse
+	import argparse, shlex
 	parser = argparse.ArgumentParser()
-	parser.add_argument("--command1", metavar="CMD", nargs="+")
-	parser.add_argument("--command2", metavar="CMD", nargs="+")
+	parser.add_argument("--command1", metavar="CMD")
+	parser.add_argument("--command2", metavar="CMD")
+	parser.add_argument("--show-games", action="store_true", help="Show the games while they're being generated.")
+	parser.add_argument("--opening", metavar="MOVES", type=str, default=None, help="Comma separated sequence of moves for the opening.")
 	args = parser.parse_args()
+	args.command1 = shlex.split(args.command1)
+	args.command2 = shlex.split(args.command2)
 	print "Options:", args
 
 	win_counter = {1: 0, 2: 0}
@@ -113,6 +125,8 @@ if __name__ == "__main__":
 				move = random.choice(opening.legal_moves())
 				opening_moves.append(move)
 				opening.move(move)
+			if args.opening != None:
+				opening_moves = [uai_interface.uai_decode_move(m.strip()) for m in args.opening.split(",")]
 
 		outcome = play_one_game(args, opening_moves=opening_moves, swap=swap)
 		swap = not swap

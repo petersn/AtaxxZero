@@ -3,7 +3,6 @@
 import sys, string
 import ataxx_rules
 import engine
-import train
 
 def uai_encode_square(xy):
 	x, y = xy
@@ -40,9 +39,12 @@ def test():
 		assert uai_decode_move(uai_encode_move(m)) == m
 test()
 
-def main():
+def main(args):
 	board = ataxx_rules.AtaxxState.initial()
 	eng = engine.MCTSEngine()
+	if args.visits != None:
+#		eng.VISITS = args.visits
+		eng.MAX_STEPS = args.visits
 
 	while True:
 		line = raw_input()
@@ -62,7 +64,11 @@ def main():
 			eng.set_state(board.copy())
 		elif line.startswith("go movetime "):
 			ms = int(line[12:])
-			move = eng.genmove(ms * 1e-3)
+			if args.visits == None:
+				move = eng.genmove(ms * 1e-3)
+			else:
+				# This is safe, because of the visit limit we set above.
+				move = eng.genmove(1000000.0)
 			print "bestmove %s" % (uai_encode_move(move),)
 		elif line == "showboard":
 			print board
@@ -72,10 +78,12 @@ def main():
 if __name__ == "__main__":
 	import argparse
 	parser = argparse.ArgumentParser()
-	parser.add_argument("network", metavar="NETWORK", type=str, help="Name of the model to load.")
+	parser.add_argument("--network-path", metavar="NETWORK", type=str, help="Name of the model to load.")
+	parser.add_argument("--visits", metavar="VISITS", default=None, type=int, help="Number of visits during MCTS.")
 	args = parser.parse_args()
+	print >>sys.stderr, args
 
 	engine.setup_evaluator(use_rpc=False)
-	engine.initialize_model(train.model_path(args.network))
-	main()
+	engine.initialize_model(args.network_path)
+	main(args)
 
