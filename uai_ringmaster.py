@@ -15,10 +15,20 @@ class UAIPlayer:
 		self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 		atexit.register(self.proc.kill)
 		self.send("uai\n")
+		self.send("setoption name Hash value 1024\n")
+#		self.send("setoption name Search value most-captures\n")
 
 	def send(self, s):
 		self.proc.stdin.write(s)
 		self.proc.stdin.flush()
+
+	def quit(self):
+		self.send("quit\n")
+		try:
+			self.proc.kill()
+		except OSError:
+			pass
+		self.proc.wait()
 
 	def reset(self):
 		self.send("uainewgame\n")
@@ -29,17 +39,21 @@ class UAIPlayer:
 	def move(self, move):
 		self.send("moves %s\n" % uai_interface.uai_encode_move(move))
 
-	def genmove(self, time=1000):
+	def genmove(self, ms=1000):
 #		if ("uai_interface" in " ".join(self.cmd)) or True:
 #			print "More time alotted."
 #			time *= 5
-		self.send("go movetime %i\n" % time)
+#		if "ataxx-engine" in " ".join(self.cmd):
+#			print " ".join(self.cmd)[:10], "--", self.showboard()
+		self.send("go movetime %i\n" % ms)
 		while True:
 			line = self.proc.stdout.readline().strip()
 			if not line:
 				raise Exception("Bad UAI!")
 			if line.startswith("bestmove "):
+#				print " ".join(self.cmd)[:10], "##", line
 				return uai_interface.uai_decode_move(line[9:])
+#			print " ".join(self.cmd)[:10], "::", line
 
 	def showboard(self):
 		self.send("showboard\n")
@@ -91,10 +105,20 @@ def play_one_game(args, engine1, engine2, opening_moves):
 		elif len(board.legal_moves()) == 1:
 			move, = board.legal_moves()
 		else:
-			move = players[ply_number % 2].genmove()
+			ms = int(args.tc * 1000)
+			move = players[ply_number % 2].genmove(ms)
 		if args.show_games:
 			print "Move:", uai_interface.uai_encode_move(move)
-		board.move(move)
+		try:
+			board.move(move)
+		except Exception as e:
+			print "Exception:", e
+			print move
+			print board
+			print game
+			print board.fen()
+			print uai_interface.uai_encode_move(move)
+			raise e
 		game["moves"].append(move)
 		for player in players:
 			player.move(move)
@@ -105,7 +129,7 @@ def play_one_game(args, engine1, engine2, opening_moves):
 			break
 
 	for player in players:
-		player.send("quit\n")
+		player.quit()
 
 	result = board.result()
 	if result == None:
@@ -121,7 +145,7 @@ def play_one_game(args, engine1, engine2, opening_moves):
 
 	return game
 
-def write_game_to_pgn(path, game, round_index=1):
+def write_game_to_pgn(args, path, game, round_index=1):
 	with open(path, "a+") as f:
 		print >>f, '[Event "?"]'
 		print >>f, '[Site "?"]'
@@ -136,6 +160,7 @@ def write_game_to_pgn(path, game, round_index=1):
 		result_string = {1: "1-0", 2: "0-1", "invalid": "1/2-1/2"}[game["result"]]
 		print >>f, '[Result "%s"]' % (result_string,)
 		print >>f, '[FinalScore "%i-%i"]' % game["final_score"]
+		print >>f, '[TimeControl "+%r"]' % (args.tc,)
 		print >>f
 		print >>f, " ".join(map(uai_interface.uai_encode_move, game["moves"]))
 		print >>f
@@ -145,6 +170,8 @@ def write_game_to_pgn(path, game, round_index=1):
 
 def get_opening(args):
 	if args.opening != None:
+		if not args.opening.strip():
+			return []
 		return [uai_interface.uai_decode_move(m.strip()) for m in args.opening.split(",")]
 	board = ataxx_rules.AtaxxState.initial()
 	opening_moves = []
@@ -162,6 +189,8 @@ if __name__ == "__main__":
 	parser.add_argument("--opening", metavar="MOVES", type=str, default=None, help="Comma separated sequence of moves for the opening.")
 	parser.add_argument("--max-plies", metavar="N", type=int, default=None, help="Maximum number of plies in a game before it's aborted and rejected.")
 	parser.add_argument("--pgn-out", metavar="PATH", type=str, default=None, help="PGN file path to accumulate games into. Writes in append mode.")
+	parser.add_argument("--gauntlet", action="store_true", help="Just the first engine plays against all the other engines.")
+	parser.add_argument("--tc", metavar="SEC", type=float, default=1.0, help="Seconds per move for all engines.")
 	args = parser.parse_args()
 	print "Options:", args
 
@@ -177,7 +206,24 @@ if __name__ == "__main__":
 
 	while True:
 		if not games_queue:
-			pairings = list(itertools.combinations(engines, 2))
+			if args.gauntlet:
+				pairings = [(engines[0], eng) for eng in engines[1:]]
+			else:
+				pairings = list(itertools.combinations(engines, 2))
+				def get_model_number(s):
+					import re
+					assert isinstance(s, list) or isinstance(s, tuple)
+					s = " ".join(s)
+					return int(re.search("model-([0-9]+)", s).groups()[0])
+#				def too_low(s):
+#					s = " ".join(s)
+#					return any(("model-%03i" % i) in s for i in xrange(38))
+				pairings = [
+					(a, b)
+					for a, b in pairings
+					if ("005-pre2" in " ".join(a) or "005-pre2" in " ".join(b) or "ataxx-engine" in " ".join(a) or "ataxx-engine" in " ".join(b)) or
+						(abs(get_model_number(a) - get_model_number(b)) <= 10 and (get_model_number(a) > 0 or get_model_number(b) > 0))
+				]
 			random.shuffle(pairings)
 			for pairing in pairings:
 				opening = get_opening(args)
@@ -194,7 +240,7 @@ if __name__ == "__main__":
 		else:
 			win_counter[engine_pair[0]] += 0.5
 			win_counter[engine_pair[1]] += 0.5
-#			annulled_games += 1
+			annulled_games += 1
 		print "Wins: %s (annulled: %i)" % (
 			" - ".join(str(win_counter[eng]) for eng in engines),
 			annulled_games,
@@ -202,5 +248,5 @@ if __name__ == "__main__":
 
 		if args.pgn_out:
 			games_written += 1
-			write_game_to_pgn(args.pgn_out, game, round_index=games_written)
+			write_game_to_pgn(args, args.pgn_out, game, round_index=games_written)
 

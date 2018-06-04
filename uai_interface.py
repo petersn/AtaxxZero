@@ -11,7 +11,7 @@ def uai_encode_square(xy):
 
 def uai_encode_move(move):
 	if move == "pass":
-		return "none"
+		return "0000"
 	start, end = move
 	if start == "c":
 		return uai_encode_square(end)
@@ -23,7 +23,7 @@ def uai_decode_square(s):
 	return x, y
 
 def uai_decode_move(s):
-	if s in ("pass", "none"):
+	if s in ("pass", "none", "0000"):
 		return "pass"
 	elif len(s) == 2:
 		return "c", uai_decode_square(s)

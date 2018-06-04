@@ -15,7 +15,7 @@ def generate_game(args):
 	e = engine.MCTSEngine()
 	while True:
 		print board
-		selected_move = e.genmove(0.7, early_out=False)
+		selected_move = e.genmove(1.0, early_out=False)
 		board.move(selected_move)
 		e.set_state(board.copy())
 		if board.result() != None:
