@@ -80,7 +80,7 @@ def generate_game(args):
 		if args.die_if_present and os.path.exists(args.die_if_present):
 			print "Exiting due to signal file!"
 			exit()
-	entry["result"] = board.result()
+	entry["result"] = board.result();
 	print "[%3i] Generated a %i ply game (%.2f avg steps) with result %r." % (
 		args.group_index,
 		len(entry["boards"]),

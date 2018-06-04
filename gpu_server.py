@@ -18,7 +18,7 @@ FEATURES_SHAPE = model.BOARD_SIZE, model.BOARD_SIZE, model.Network.INPUT_FEATURE
 
 class Processor:
 	MAXIMUM_WAIT_TIME = 0.01
-	MARSHALL_COUNT    = 8
+	MARSHALL_COUNT    = 32
 
 	def __init__(self):
 		self.empty()
@@ -36,8 +36,8 @@ class Processor:
 		assert len(self.accumulated_features) == len(self.accumulated_slots)
 
 		batch_size = len(self.accumulated_features)
-#		if random.random() < 0.001:
-#			print "Evaluating batch of size:", batch_size
+		if random.random() < 0.0001:
+			print "Evaluating batch of size:", batch_size
 
 		# Do the actual processing here!
 		posteriors, values = engine.sess.run(
