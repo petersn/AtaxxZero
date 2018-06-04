@@ -82,11 +82,11 @@ class NetworkServer(RPCServer):
 		return result_slot.get()
 
 if len(sys.argv) != 3:
-	print "Usage: %s model_name port-to-host-on" % (sys.argv[0],)
+	print "Usage: %s model_path port-to-host-on" % (sys.argv[0],)
 	exit(1)
 
-model_path = train.model_path(sys.argv[1])
-engine.initialize_model(model_path)
+#model_path = train.model_path(sys.argv[1])
+engine.initialize_model(sys.argv[1])
 
 port = int(sys.argv[2])
 print

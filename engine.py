@@ -59,6 +59,7 @@ def board_to_features(board):
 			# Finally, fill layer 3 with a 1 where blocked cells are.
 			if (x, y) in ataxx_rules.BLOCKED_CELLS:
 				features[x, y, 3] = 1
+#	print features.tostring().replace("\0", "0").replace("\1", "1")
 	return features
 
 position_delta_layers = {delta: i for i, delta in enumerate(ataxx_rules.FAR_NEIGHBOR_OFFSETS)}
@@ -162,6 +163,7 @@ class NNEvaluator:
 		# Evaluate the boards together.
 		self.ensemble_sizes.append(len(ensemble))
 		features = map(board_to_features, ensemble)
+#		print features[0].flatten()
 		posteriors, values = sess.run(
 			[network.policy_output, network.value_output],
 			feed_dict={
@@ -222,6 +224,7 @@ class MCTSEdge:
 		return self.edge_total_score / self.edge_visits
 
 	def adjust_score(self, new_score):
+		print "   ADJUSTING BY: ", new_score
 		self.edge_visits += 1
 		self.edge_total_score += new_score
 
@@ -250,6 +253,13 @@ class MCTSNode:
 		else:
 			u_score = MCTS.exploration_parameter * self.board.evaluations.posterior[move] * (1.0 + self.all_edge_visits)**0.5
 			Q_score = 0.0
+#		print "Action score: %s %s Q=%.6f u=%.6f p=%.6f" % (
+#			self,
+#			uai_interface.uai_encode_move(move),
+#			Q_score,
+#			u_score,
+#			self.board.evaluations.posterior[move],
+#		)
 		return Q_score + u_score
 
 	def select_action(self, use_dirichlet_noise):
@@ -260,6 +270,7 @@ class MCTSNode:
 		# If the game is over then return None.
 		if self.board.evaluations.game_over:
 			return
+		# WARNING: Does this actually use Dirichlet noise? I don't think it does.
 		posterior = self.board.evaluations.posterior
 		if use_dirichlet_noise:
 			self.board.evaluations.populate_noisy_posterior()
@@ -355,9 +366,11 @@ class MCTS:
 			new_node.graph_name_suffix = to_move_name(move)
 			new_edge = node.outgoing_edges[move] = MCTSEdge(move, new_node, parent_node=node)
 			edges_on_path.append(new_edge)
+#			print "MAKING NOVEL MOVE:", uai_interface.uai_encode_move(move)
 		else:
 			# 2b) If the move is null, then we had no legal moves, and just propagate the score again.
 			new_node = node
+		print " ".join([uai_interface.uai_encode_move(edge.move) for edge in edges_on_path])
 		# 3a) Evaluate the new node.
 		global_evaluator.populate(new_node.board)
 		# 3b) Queue up some children just for efficiency.
