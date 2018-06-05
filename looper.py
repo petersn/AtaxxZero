@@ -41,7 +41,7 @@ def generate_games(model_number):
 		game_counts.append(game_count)
 		print "Game count:", game_count
 		time.sleep(10)
-		if game_count >= GAME_COUNT:
+		if game_count >= args.game_count:
 			break
 
 	# Signal the process to die gracefully.
@@ -53,20 +53,50 @@ def generate_games(model_number):
 	return True
 
 def index_to_model_path(i):
-	return os.path.join(path_prefix, "models", "model-%03i.npy" % i)
+	return os.path.join(args.prefix, "models", "model-%03i.npy" % i)
 
 def index_to_games_path(i):
-	return os.path.join(path_prefix, "games", "model-%03i.json" % i)
+	return os.path.join(args.prefix, "games", "model-%03i.json" % i)
 
 if __name__ == "__main__":
 	import argparse
-	VISIT_COUNT = 200
-	FIRST_MODEL_VISIT_COUNT = 50
-	GAME_COUNT = 500
-	TRAINING_STEPS = 200
-	BONUS_TRAINING_STEPS_PER_ROUND = 50
-	TRAIN_ROUNDS_INCLUDED = 10
-	TRAIN_ROUNDS_MINIMUM = 3
+	class Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter): pass
+	parser = argparse.ArgumentParser(
+		description="""
+Performs the main loop of alternating game generation (via accelerated_generate_games.py)
+with training (via train.py). You specify a prefix path which will have the structure:
+  PREFIX/
+    games/
+      model-001.json
+      model-002.json
+      ...
+    models/
+      model-001.npy
+      model-002.npy
+      ...
+You are expected to create the PREFIX/games/ and PREFIX/models/ directories, and populate
+the initial PREFIX/models/model-001.npy file. Then looper.py will run in a main loop of:
+
+  1) Generate self-play games with the highest numbered present
+     model until reaching the minimum game count.
+  2) Train model n+1 from the current highest numbered model,
+     and a pool of games from recent iterations.
+
+It is relatively safe to interrupt and restart, as looper.py will automatically resume on
+the most recent model. (However, interrupting and restarting looper.py of course
+technically statistically biases the games slightly towards being shorter.)
+""",
+		formatter_class=Formatter,
+	)
+	parser.add_argument("--prefix", metavar="PATH", default=".", help="Prefix directory. Make sure this directory contains games/ and models/ subdirectories.")
+	parser.add_argument("--visits", metavar="N", type=int, default=200, help="At each move in the self-play games perform MCTS until the root node has N visits.")
+	parser.add_argument("--game-count", metavar="N", type=int, default=500, help="Minimum number of games to generate per iteration.")
+	parser.add_argument("--training-steps-const", metavar="N", type=int, default=200, help="Base number of training steps to perform per iteration.")
+	parser.add_argument("--training-steps-linear", metavar="N", type=int, default=50, help="We also apply an additional N steps for each additional iteration included in the training window.")
+	parser.add_argument("--training-window", metavar="N", type=int, default=10, help="When training include games from the past N iterations.")
+	parser.add_argument("--training-window-exclude", metavar="N", type=int, default=3, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
+	args = parser.parse_args()
+	print "Arguments:", args
 
 	current_model_number = 1
 
@@ -86,14 +116,14 @@ if __name__ == "__main__":
 
 		print "=========================== Doing training:", old_model, "->", new_model
 		# Figure out the directories of games to train on.
-		low_index = min(current_model_number, max(TRAIN_ROUNDS_MINIMUM, current_model_number - TRAIN_ROUNDS_INCLUDED + 1))
+		low_index = min(current_model_number, max(args.training_window_exclude + 1, current_model_number - args.training_window + 1))
 		high_index = current_model_number
 		games_paths = [
 			index_to_games_path(i)
 			for i in xrange(low_index, high_index + 1)
 		]
 		print "Game paths:", games_paths
-		steps = TRAINING_STEPS + BONUS_TRAINING_STEPS_PER_ROUND * (len(games_paths) - 1)
+		steps = args.training_steps_const + args.training_steps_linear * (len(games_paths) - 1)
 		print "Steps:", steps
 		subprocess.check_call([
 			"python", "train.py",

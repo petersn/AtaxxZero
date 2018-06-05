@@ -100,6 +100,7 @@ if __name__ == "__main__":
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 	)
 	parser.add_argument("--network", metavar="PATH", required=True, help="Path of the model to load.")
+	parser.add_argument("--output-games", metavar="PATH", type=str, default=None, help="Path to write .json games to. Writes in append mode, so it won't overwrite existing games.")
 	parser.add_argument("--group-index", metavar="N", default=0, type=int, help="Our index in the work group.")
 	parser.add_argument("--use-rpc", action="store_true", help="Use RPC for NN evaluation.")
 	parser.add_argument("--random-play", action="store_true", help="Generate games by totally random play.")
@@ -126,10 +127,13 @@ if __name__ == "__main__":
 	if args.supervised != None:
 		args.uai_player = uai_ringmaster.UAIPlayer(args.supervised)
 
-	output_directory = os.path.join("games", network_name)
-	if not os.path.exists(output_directory):
-		os.mkdir(output_directory)
-	output_path = os.path.join(output_directory, os.urandom(8).encode("hex") + ".json")
+	if args.output_games == None:
+		output_directory = os.path.join("games", network_name)
+		if not os.path.exists(output_directory):
+			os.mkdir(output_directory)
+		output_path = os.path.join(output_directory, os.urandom(8).encode("hex") + ".json")
+	else:
+		output_path = args.output_games
 	if args.no_write:
 		output_path = "/dev/null"
 	print "[%3i] Writing to: %s" % (args.group_index, output_path)
