@@ -21,45 +21,57 @@ def kill(proc):
 
 def generate_games(model_number):
 	# Touch the games file to initialize it empty if it doesn't exist.
-	open(index_to_games_path(model_number), "a").close()
+	for path in index_to_games_paths(model_number):
+		open(path, "a").close()
 
 	# Before we even launch check if we have enough games.
-	if count_games([index_to_games_path(model_number)]) >= args.game_count:
+	if count_games(index_to_games_paths(model_number)) >= args.game_count:
 		print "Enough games to start with!"
 		return
 
 	# Launch the games generation.
-	games_proc = subprocess.Popen([
-		"python", "accelerated_generate_games.py",
-			"--network", index_to_model_path(model_number),
-			"--output-games", index_to_games_path(model_number),
-			"--visits", str(args.visits),
-	], close_fds=True)
+	games_processes = [
+		subprocess.Popen([
+			"python", "accelerated_generate_games.py",
+				"--network", index_to_model_path(model_number),
+				"--output-games", path,
+				"--visits", str(args.visits),
+		], close_fds=True)
+		for path in index_to_games_paths(model_number)
+	]
 	# If our process dies take the games generation down with us.
-	def _(games_proc):
-		atexit.register(lambda: kill(games_proc))
-	_(games_proc)
+	def _(games_processes):
+		def handler():
+			for proc in games_processes:
+				kill(proc)
+		atexit.register(handler)
+	_(games_processes)
 
 	# We now periodically check up on how many games we have.
 	while True:
-		game_count = count_games([index_to_games_path(model_number)])
+		game_count = count_games(index_to_games_paths(model_number))
 		print "Game count:", game_count
 		time.sleep(10)
 		if game_count >= args.game_count:
 			break
 
 	# Signal the process to die gracefully.
-	os.kill(games_proc.pid, signal.SIGTERM)
+	for proc in games_processes:
+		os.kill(proc.pid, signal.SIGTERM)
 	# Wait up to two seconds, then forcefully kill it.
 	time.sleep(2)
-	kill(games_proc)
+	for proc in games_processes:
+		kill(proc)
 	print "Exiting."
 
 def index_to_model_path(i):
 	return os.path.join(args.prefix, "models", "model-%03i.npy" % i)
 
-def index_to_games_path(i):
-	return os.path.join(args.prefix, "games", "model-%03i.json" % i)
+def index_to_games_paths(i):
+	return [
+		os.path.join(args.prefix, "games", "model-%03i-%i.json" % (i, process_index))
+		for process_index in xrange(args.parallel_games_processes)
+	]
 
 if __name__ == "__main__":
 	import argparse
@@ -98,6 +110,7 @@ technically statistically biases the games slightly towards being shorter.)
 	parser.add_argument("--training-steps-linear", metavar="N", type=int, default=50, help="We also apply an additional N steps for each additional iteration included in the training window.")
 	parser.add_argument("--training-window", metavar="N", type=int, default=10, help="When training include games from the past N iterations.")
 	parser.add_argument("--training-window-exclude", metavar="N", type=int, default=3, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
+	parser.add_argument("--parallel-games-processes", metavar="N", type=int, default=1, help="Number of games processes to run in parallel.")
 	args = parser.parse_args()
 	print "Arguments:", args
 
@@ -121,10 +134,8 @@ technically statistically biases the games slightly towards being shorter.)
 		# Figure out the directories of games to train on.
 		low_index = min(current_model_number, max(args.training_window_exclude + 1, current_model_number - args.training_window + 1))
 		high_index = current_model_number
-		games_paths = [
-			index_to_games_path(i)
-			for i in xrange(low_index, high_index + 1)
-		]
+		games_paths = sum((index_to_games_paths(i) for i in xrange(low_index, high_index + 1)), [])
+		
 		print "Game paths:", games_paths
 		steps = args.training_steps_const + args.training_steps_linear * (len(games_paths) - 1)
 		print "Steps:", steps
