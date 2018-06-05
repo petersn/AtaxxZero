@@ -29,5 +29,5 @@ On my GTX 970 it takes about an hour per self-improvement loop.
 
 ## License
 
-All of the code is public domain (or CC0, for those outside of the United States), so you may do whatever you want with it, with the exception of .
+All of the code is public domain (or CC0, for those outside of the United States), so you may do whatever you want with it, with the exception of the files `cpp/{ataxx,bitboards,invalid,makemove,move,movegen,other}.{cpp,hpp}`, which are a 7x7 Ataxx movegen and bitboard implementation taken from [https://github.com/kz04px/ataxx-engine], and are MIT licensed.
 
