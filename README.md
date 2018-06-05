@@ -27,3 +27,7 @@ Once you have this network you can launch the main process that handles self-imp
 
 On my GTX 970 it takes about an hour per self-improvement loop.
 
+## License
+
+All of the code is public domain (or CC0, for those outside of the United States), so you may do whatever you want with it, with the exception of .
+

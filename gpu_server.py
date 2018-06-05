@@ -18,7 +18,7 @@ FEATURES_SHAPE = model.BOARD_SIZE, model.BOARD_SIZE, model.Network.INPUT_FEATURE
 
 class Processor:
 	MAXIMUM_WAIT_TIME = 0.01
-	MARSHALL_COUNT    = 32
+	MARSHALL_COUNT    = 16
 
 	def __init__(self):
 		self.empty()

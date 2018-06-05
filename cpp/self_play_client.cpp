@@ -3,10 +3,18 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_map>
+#include <vector>
+#include <list>
+#include <queue>
+#include <chrono>
 #include <random>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 #include <cmath>
 #include <cassert>
-#include <rpc/client.h>
+
+//#include <rpc/client.h>
 #include <json.hpp>
 #include "movegen.hpp"
 #include "makemove.hpp"
@@ -30,7 +38,7 @@ const std::vector<double> opening_randomization_schedule {
 
 std::random_device rd;
 std::default_random_engine generator(rd());
-rpc::client* global_rpc_connection;
+//rpc::client* global_rpc_connection;
 
 // Extend Move with a hash.
 namespace std {
@@ -127,22 +135,24 @@ int get_board_result(const Position& board, Move* optional_moves_buffer=nullptr)
 	return 0;
 }
 
+std::pair<const float*, double> request_evaluation(int thread_id, const float* feature_string);
+
 struct Evaluations {
 	bool game_over;
 	double value;
 	std::unordered_map<Move, double> posterior;
 
-	void populate(const Position& board, bool use_dirichlet_noise) {
+	void populate(int thread_id, const Position& board, bool use_dirichlet_noise) {
 		// Compeltely reset the evaluation.
 		posterior.clear();
 		game_over = false;
 
 		// Build a features map, initialized to all zeros.
-		uint8_t feature_buffer[7 * 7 * 4] = {};
+		float feature_buffer[7 * 7 * 4] = {};
 		for (int y = 0; y < 7; y++) {
 			for (int x = 0; x < 7; x++) {
 				// Fill in layer 0 with all ones.
-				feature_buffer[stride_index<7, 7, 4>(x, y, 0)] = 1;
+				feature_buffer[stride_index<7, 7, 4>(x, y, 0)] = 1.0;
 
 				int square = x + 7 * (6 - y);
 				uint64_t mask = 1ull << square;
@@ -157,23 +167,33 @@ struct Evaluations {
 				// If there is a piece of the (player to move)'s then write a 1 to layer 1, otherwise to layer 2.
 				if (piece_present) {
 					if (current_player_piece)
-						feature_buffer[stride_index<7, 7, 4>(x, y, 1)] = 1;
+						feature_buffer[stride_index<7, 7, 4>(x, y, 1)] = 1.0;
 					else
-						feature_buffer[stride_index<7, 7, 4>(x, y, 2)] = 1;
+						feature_buffer[stride_index<7, 7, 4>(x, y, 2)] = 1.0;
 				}
 				// If there's a blocker write to layer 3.
 				if (blocker_present)
-					feature_buffer[stride_index<7, 7, 4>(x, y, 3)] = 1;
+					feature_buffer[stride_index<7, 7, 4>(x, y, 3)] = 1.0;
 			}
 		}
 
 		// Call the RPC CNN evaluator.
-		std::string feature_string(reinterpret_cast<char*>(feature_buffer), sizeof(feature_buffer));
-		auto result = global_rpc_connection->call("network", feature_string).as<std::tuple<std::string, double>>();
-		std::string& posterior_str = std::get<0>(result);
-		value = std::get<1>(result);
+//		std::string feature_string(reinterpret_cast<char*>(feature_buffer), sizeof(feature_buffer));
+		auto request_result = request_evaluation(thread_id, feature_buffer);
+//		auto result = global_rpc_connection->call("network", feature_string).as<std::tuple<std::string, double>>();
+//		std::string& posterior_str = std::get<0>(result);
+//		value = std::get<1>(result);
+//		std::string posterior_str = "asdf";
+//		value = 0.1;
 
-		const float* posterior_array = reinterpret_cast<const float*>(posterior_str.c_str());
+//		const float* posterior_array = reinterpret_cast<const float*>(posterior_str.c_str());
+
+		const float* posterior_array = request_result.first;
+		value = request_result.second;
+//		for (int i = 0; i < 7 * 7 * 17; i++)
+//			assert(posterior_array[i] == 0.0);
+//		assert(value == 0.0);
+
 		double softmaxed[7 * 7 * 17];
 
 		// Softmax the posterior array.
@@ -272,10 +292,10 @@ struct MCTSNode {
 		return u_score + Q_score;
 	}
 
-	void populate_evals(bool use_dirichlet_noise=false) {
+	void populate_evals(int thread_id, bool use_dirichlet_noise=false) {
 		if (evals_populated)
 			return;
-		evals.populate(board, use_dirichlet_noise);
+		evals.populate(thread_id, board, use_dirichlet_noise);
 		evals_populated = true;
 	}
 
@@ -302,19 +322,20 @@ struct MCTSNode {
 };
 
 struct MCTS {
+	int thread_id;
 	Position root_board;
-	shared_ptr<MCTSNode> root_node;
 	bool use_dirichlet_noise;
+	shared_ptr<MCTSNode> root_node;
 
-	MCTS(const Position& root_board, bool use_dirichlet_noise)
-		: root_board(root_board), use_dirichlet_noise(use_dirichlet_noise)
+	MCTS(int thread_id, const Position& root_board, bool use_dirichlet_noise)
+		: thread_id(thread_id), root_board(root_board), use_dirichlet_noise(use_dirichlet_noise)
 	{
 		init_from_scratch(root_board);
 	}
 
 	void init_from_scratch(const Position& root_board) {
 		root_node = std::make_shared<MCTSNode>(root_board);
-		root_node->populate_evals(use_dirichlet_noise);
+		root_node->populate_evals(thread_id, use_dirichlet_noise);
 	}
 
 	std::tuple<shared_ptr<MCTSNode>, Move, std::vector<MCTSEdge*>> select_principal_variation(bool best=false) {
@@ -384,7 +405,7 @@ struct MCTS {
 //		cout << endl;
 
 		// 3) Evaluate the new node to get a score to propagate back up the tree.
-		new_node->populate_evals();
+		new_node->populate_evals(thread_id);
 		// Convert the expected value result into a score.
 		double value_score = (new_node->evals.value + 1.0) / 2.0;
 		// 4) Backup.
@@ -396,6 +417,11 @@ struct MCTS {
 			assert(inverted == (edge.parent_node->board.turn != new_node->board.turn));
 			edge.adjust_score(value_score);
 			edge.parent_node->all_edge_visits++;
+		}
+		if (edges_on_path.size() == 0) {
+			cout << ">>> No edges on path!" << endl;
+			print(root_board, false);
+			cout << ">>> Move:" << move_string(move) << endl;
 		}
 		assert(edges_on_path.size() != 0);
 	}
@@ -430,10 +456,10 @@ Move sample_proportionally_to_visits(const shared_ptr<MCTSNode>& node) {
 	return (*node->outgoing_edges.begin()).first;
 }
 
-json generate_game() {
+json generate_game(int thread_id) {
 	Position board;
 	set_board(board, STARTING_GAME_POSITION);
-	MCTS mcts(board, true);
+	MCTS mcts(thread_id, board, true);
 
 	json entry = {{"boards", {}}, {"moves", {}}};
 
@@ -465,15 +491,150 @@ json generate_game() {
 	return entry;
 }
 
-int main() {
-	global_rpc_connection = new rpc::client("127.0.0.1", 6500);
+// ================================================
+//        T h r e a d e d   W o r k l o a d
+// ================================================
+
+struct Worker;
+struct ResponseSlot;
+
+std::list<Worker> global_workers;
+std::vector<Worker*> global_workers_by_id;
+float* global_fill_buffers[2];
+int global_buffer_entries;
+
+int current_buffer = 0;
+int fill_levels[2] = {0, 0};
+std::vector<ResponseSlot> response_slots[2];
+std::queue<int> global_filled_queue;
+std::mutex global_mutex;
+
+struct ResponseSlot {
+	int thread_id;
+};
+
+struct Worker {
+	std::mutex thread_mutex;
+	std::condition_variable cv;
+	std::thread t;
+
+	bool response_filled;
+	double response_value;
+	float response_posterior[7 * 7 * 17];
+
+	Worker(int thread_id)
+		: t(Worker::thread_main, thread_id) {}
+
+	static void thread_main(int thread_id) {
+//		cout << "Launching thread: " << thread_id << endl;
+		while (true) {
+			json game = generate_game(thread_id);
+			if (game["result"] == 0) {
+				cout << "Skipping game with null result." << endl;
+				continue;
+			}
+			cout << thread_id << " Game generated. Plies: " << game["moves"].size() << endl;
+		}
+	}
+};
+
+std::pair<const float*, double> request_evaluation(int thread_id, const float* feature_string) {
+	// Write an entry into the appropriate work queue.
+	{
+		std::lock_guard<std::mutex> global_lock(global_mutex);
+		int slot_index = fill_levels[current_buffer]++;
+		// Copy our features into the big buffer.
+		float* destination = global_fill_buffers[current_buffer] + (7 * 7 * 4) * slot_index;
+		std::copy(feature_string, feature_string + (7 * 7 * 4), destination);
+		// Place an entry requesting a reply.
+		response_slots[current_buffer][slot_index].thread_id = thread_id;
+		// Set that we're waiting on a response.
+		Worker& worker = *global_workers_by_id[thread_id];
+		worker.response_filled = false;
+		// Swap buffers if we filled up the current one.
+		if (fill_levels[current_buffer] == global_buffer_entries) {
+//			cout << "Flip buffer from " << current_buffer << endl;
+			global_filled_queue.push(current_buffer);
+			current_buffer = 1 - current_buffer;
+		}
+		// TODO: Notify the main thread so it doesn't have to poll.
+	}
+	// Wait on a reply.
+	Worker& worker = *global_workers_by_id[thread_id];
+	std::unique_lock<std::mutex> lk(worker.thread_mutex);
+	worker.cv.wait(lk, [&worker]{ return worker.response_filled; });
+	// Response collected!
+	return {worker.response_posterior, worker.response_value};
+}
+
+extern "C" void launch_threads(float* fill_buffer1, float* fill_buffer2, int buffer_entries, int thread_count) {
+	global_fill_buffers[0] = fill_buffer1;
+	global_fill_buffers[1] = fill_buffer2;
+	global_buffer_entries = buffer_entries;
+	cout << "Launching into " << fill_buffer1 << ", " << fill_buffer2 << " with " << buffer_entries << " entries and " << thread_count << " threads." << endl;
+
+	for (int i = 0; i < buffer_entries; i++) {
+		response_slots[0].push_back(ResponseSlot());
+		response_slots[1].push_back(ResponseSlot());
+	}
+
+	for (int i = 0; i < thread_count; i++) {
+		global_workers.emplace_back(i);
+		global_workers_by_id.push_back(&global_workers.back());
+	}
+//	for (std::thread& t : global_workers)
+//		t.join();
+}
+
+extern "C" int get_workload() {
+	while (true) {
+		{
+			// Check if a workload is ready.
+			std::lock_guard<std::mutex> global_lock(global_mutex);
+//			cout << "Levels: " << fill_levels[0] << " " << fill_levels[1] << endl;
+//			if (fill_levels[0] == global_buffer_entries)
+//				return 0;
+//			if (fill_levels[1] == global_buffer_entries)
+//				return 1;
+			if (not global_filled_queue.empty()) {
+				int workload_index = global_filled_queue.front();
+				global_filled_queue.pop();
+				return workload_index;
+			}
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+}
+
+extern "C" void complete_workload(int workload, float* posteriors, float* values) {
+	std::lock_guard<std::mutex> global_lock(global_mutex);
+	for (int i = 0; i < global_buffer_entries; i++) {
+		ResponseSlot& slot = response_slots[workload][i];
+		Worker& worker = *global_workers_by_id[slot.thread_id];
+		worker.response_value = values[i];
+		std::copy(posteriors, posteriors + (7 * 7 * 17), worker.response_posterior);
+		posteriors += (7 * 7 * 17);
+		{
+			std::lock_guard<std::mutex> lk(worker.thread_mutex);
+			worker.response_filled = true;
+		}
+		worker.cv.notify_one();
+	}
+	fill_levels[workload] = 0;
+}
+
+#if 0
+int main(int argc, const char** argv) {
+	int my_number = std::stoi(argv[1]);
+	int port = std::stoi(argv[2]);
+	global_rpc_connection = new rpc::client("127.0.0.1", port);
 
 	std::string path = "games/self-play-";
 	for (int i = 0; i < 16; i++)
 		path += "0123456789abcdef"[std::uniform_int_distribution<int>{0, 15}(generator)];
 	path += ".json";
 
-	cout << "Writing to: " << path << endl;
+	cout << my_number << " on port " << port << " writing to: " << path << endl;
 
 	std::ofstream out(path);
 
@@ -485,7 +646,8 @@ int main() {
 		}
 		out << game << "\n";
 		out.flush();
-		cout << "Game generated." << endl;
+		cout << my_number << " Game generated." << endl;
 	}
 }
+#endif
 
