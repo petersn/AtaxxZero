@@ -246,7 +246,25 @@ struct Evaluations {
 
 		// Add Dirichlet noise.
 		if (use_dirichlet_noise) {
-			// TODO: Fill this in!
+			std::gamma_distribution<double> distribution(dirichlet_alpha, 1.0);
+			std::vector<double> dirichlet_distribution;
+			for (auto& p : posterior)
+				dirichlet_distribution.push_back(distribution(generator));
+			// Normalize the Dirichlet distribution.
+			double total = 0.0;
+			for (double x : dirichlet_distribution)
+				total += x;
+			for (double& x : dirichlet_distribution)
+				x /= total;
+			// Perform a weighted sum of this Dirichlet distribution and our previous posterior.
+			int index = 0;
+			for (auto& p : posterior)
+				p.second = dirichlet_weight * dirichlet_distribution[index++] + (1.0 - dirichlet_weight) * p.second;
+			// Assert approximate normalization.
+			double test_total = 0.0;
+			for (auto& p : posterior)
+				test_total += p.second;
+			assert(0.99 < test_total and test_total < 1.01);
 		}
 	}
 };
@@ -442,6 +460,11 @@ struct MCTS {
 		// Otherwise, reuse a subtree.
 		root_node = (*it).second.child_node;
 		root_board = root_node->board;
+		// Now that a new node is the root we have to redo its evals with Dirichlet noise, if required.
+		// This is a little wasteful, when we could just apply Dirichlet noise, but it's not that bad.
+		root_node->evals_populated = false;
+		root_node->populate_evals(thread_id, use_dirichlet_noise);
+
 	}
 };
 
