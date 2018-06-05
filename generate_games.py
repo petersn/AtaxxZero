@@ -99,7 +99,7 @@ if __name__ == "__main__":
 		""",
 		formatter_class=argparse.ArgumentDefaultsHelpFormatter,
 	)
-	parser.add_argument("--network", metavar="PATH", required=True, help="Path of the model to load.")
+	parser.add_argument("--network", metavar="PATH", default="", help="Path of the model to load.")
 	parser.add_argument("--output-games", metavar="PATH", type=str, default=None, help="Path to write .json games to. Writes in append mode, so it won't overwrite existing games.")
 	parser.add_argument("--group-index", metavar="N", default=0, type=int, help="Our index in the work group.")
 	parser.add_argument("--use-rpc", action="store_true", help="Use RPC for NN evaluation.")

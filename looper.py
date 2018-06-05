@@ -20,37 +20,40 @@ def kill(proc):
 	proc.kill()
 
 def generate_games(model_number):
-	visit_count = VISIT_COUNT
-	if model_number == 1:
-		visit_count = FIRST_MODEL_VISIT_COUNT
+	# Touch the games file to initialize it empty if it doesn't exist.
+	open(index_to_games_path(model_number), "a").close()
 
-	launch_proc = subprocess.Popen([
-		"python", "game_generator.py",
+	# Before we even launch check if we have enough games.
+	if count_games([index_to_games_path(model_number)]) >= args.game_count:
+		print "Enough games to start with!"
+		return
+
+	# Launch the games generation.
+	games_proc = subprocess.Popen([
+		"python", "accelerated_generate_games.py",
 			"--network", index_to_model_path(model_number),
 			"--output-games", index_to_games_path(model_number),
-			"--visits", str(visit_count),
+			"--visits", str(args.visits),
 	], close_fds=True)
-	def _(launch_proc):
-		atexit.register(lambda: kill(launch_proc))
-	_(launch_proc)
+	# If our process dies take the games generation down with us.
+	def _(games_proc):
+		atexit.register(lambda: kill(games_proc))
+	_(games_proc)
 
 	# We now periodically check up on how many games we have.
-	game_counts = []
 	while True:
 		game_count = count_games([index_to_games_path(model_number)])
-		game_counts.append(game_count)
 		print "Game count:", game_count
 		time.sleep(10)
 		if game_count >= args.game_count:
 			break
 
 	# Signal the process to die gracefully.
-	os.kill(proc.pid, signal.SIGTERM)
+	os.kill(games_proc.pid, signal.SIGTERM)
 	# Wait up to two seconds, then forcefully kill it.
 	time.sleep(2)
-	kill(launch_proc)
+	kill(games_proc)
 	print "Exiting."
-	return True
 
 def index_to_model_path(i):
 	return os.path.join(args.prefix, "models", "model-%03i.npy" % i)
@@ -112,7 +115,7 @@ technically statistically biases the games slightly towards being shorter.)
 
 		print "=========================== Doing data generation for:", old_model
 		print "Start time:", start
-		result = generate_games(current_model_number)
+		generate_games(current_model_number)
 
 		print "=========================== Doing training:", old_model, "->", new_model
 		# Figure out the directories of games to train on.

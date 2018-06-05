@@ -4,6 +4,7 @@ import os, glob, json, random
 import tensorflow as tf
 import numpy as np
 import ataxx_rules
+import uai_interface
 import engine
 import model
 
@@ -48,6 +49,8 @@ def get_sample_from_entries(entries):
 		move  = entry["moves"][ply]
 		if move == "pass":
 			continue
+		if isinstance(move, (str, unicode)):
+			move = uai_interface.uai_decode_move(move)
 		# Convert the board into encoded features.
 		features = engine.board_to_features(board)
 		desired_value = [1 if entry["result"] == to_move else -1]
@@ -82,12 +85,9 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	print "Arguments:", args
 
-	paths = []
-	for d in args.games:
-		paths.extend(glob.glob(os.path.join(d, "*.json")))
 	# Shuffle the loaded games deterministically.
 	random.seed(123456789)
-	entries = load_entries(paths)
+	entries = load_entries(args.games)
 	ply_count = sum(len(entry["moves"]) for entry in entries)
 	print "Found %i games with %i plies." % (len(entries), ply_count)
 
