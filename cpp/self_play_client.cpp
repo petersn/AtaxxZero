@@ -14,7 +14,6 @@
 #include <cmath>
 #include <cassert>
 
-//#include <rpc/client.h>
 #include <json.hpp>
 #include "movegen.hpp"
 #include "makemove.hpp"
@@ -38,7 +37,6 @@ const std::vector<double> opening_randomization_schedule {
 
 std::random_device rd;
 std::default_random_engine generator(rd());
-//rpc::client* global_rpc_connection;
 
 // Extend Move with a hash.
 namespace std {
@@ -101,7 +99,7 @@ std::vector<int> serialize_board_for_json(const Position& board) {
 	return result;
 }
 
-int get_board_result(const Position& board, Move* optional_moves_buffer=nullptr) {
+int get_board_result(const Position& board, Move* optional_moves_buffer=nullptr, int* optional_moves_count=nullptr) {
 	int p1_pieces = popcountll(board.pieces[PIECE::CROSS]);
 	int p2_pieces = popcountll(board.pieces[PIECE::NOUGHT]);
 	int blockers  = popcountll(board.blockers);
@@ -119,6 +117,8 @@ int get_board_result(const Position& board, Move* optional_moves_buffer=nullptr)
 	if (optional_moves_buffer == nullptr)
 		optional_moves_buffer = moves_buffer;
 	int num_moves = movegen(board, optional_moves_buffer);
+	if (optional_moves_count != nullptr)
+		*optional_moves_count = num_moves;
 	if (num_moves == 0) {
 		if (board.turn == SIDE::CROSS)
 			p2_pieces += empty_cells;
@@ -131,6 +131,7 @@ int get_board_result(const Position& board, Move* optional_moves_buffer=nullptr)
 		assert(p1_pieces != p2_pieces);
 		return p1_pieces < p2_pieces ? 2 : 1;
 	}
+	assert(num_moves != 0); // If there are no moves then we must adjudicate one way or the other.
 	// Finally, if none of the above cases matched, then the game isn't finished yet.
 	return 0;
 }
@@ -143,9 +144,25 @@ struct Evaluations {
 	std::unordered_map<Move, double> posterior;
 
 	void populate(int thread_id, const Position& board, bool use_dirichlet_noise) {
-		// Compeltely reset the evaluation.
+		// Completely reset the evaluation.
 		posterior.clear();
 		game_over = false;
+
+		Move moves_buffer[256];
+		int num_moves;
+		int result = get_board_result(board, moves_buffer, &num_moves);
+
+		if (result != 0) {
+			game_over = true;
+			// Score from the perspective of the current player.
+			assert(result == 1 or result == 2);
+			value = result == 1 ? 1.0 : -1.0;
+			// Flip the value to be from the perspective of the current player.
+			// TODO: XXX: Validate that I got this the right way around.
+			if (board.turn == SIDE::NOUGHT)
+				value *= -1;
+			return;
+		}
 
 		// Build a features map, initialized to all zeros.
 		float feature_buffer[7 * 7 * 4] = {};
@@ -177,26 +194,12 @@ struct Evaluations {
 			}
 		}
 
-		// Call the RPC CNN evaluator.
-//		std::string feature_string(reinterpret_cast<char*>(feature_buffer), sizeof(feature_buffer));
 		auto request_result = request_evaluation(thread_id, feature_buffer);
-//		auto result = global_rpc_connection->call("network", feature_string).as<std::tuple<std::string, double>>();
-//		std::string& posterior_str = std::get<0>(result);
-//		value = std::get<1>(result);
-//		std::string posterior_str = "asdf";
-//		value = 0.1;
-
-//		const float* posterior_array = reinterpret_cast<const float*>(posterior_str.c_str());
-
 		const float* posterior_array = request_result.first;
 		value = request_result.second;
-//		for (int i = 0; i < 7 * 7 * 17; i++)
-//			assert(posterior_array[i] == 0.0);
-//		assert(value == 0.0);
-
-		double softmaxed[7 * 7 * 17];
 
 		// Softmax the posterior array.
+		double softmaxed[7 * 7 * 17];
 		for (int i = 0; i < (7 * 7 * 17); i++)
 			softmaxed[i] = exp(posterior_array[i]);
 		double total = 0.0;
@@ -206,8 +209,6 @@ struct Evaluations {
 			softmaxed[i] /= total;
 
 		// Evaluate movegen.
-		Move moves_buffer[256];
-		int num_moves = movegen(board, moves_buffer);
 		double total_probability = 0.0;
 		for (int i = 0; i < num_moves; i++) {
 			Move& move = moves_buffer[i];
@@ -233,6 +234,9 @@ struct Evaluations {
 		// Normalize the posterior.
 		for (auto& p : posterior)
 			p.second /= total_probability;
+
+		assert(num_moves > 0);
+		assert(posterior.size() > 0);
 
 		// Add Dirichlet noise.
 		if (use_dirichlet_noise) {
@@ -398,12 +402,6 @@ struct MCTS {
 			new_node = leaf_node;
 		}
 
-//		// Print out the explored path.
-//		for (auto& edge : edges_on_path) {
-//			cout << move_string(edge->edge_move) << " ";
-//		}
-//		cout << endl;
-
 		// 3) Evaluate the new node to get a score to propagate back up the tree.
 		new_node->populate_evals(thread_id);
 		// Convert the expected value result into a score.
@@ -431,7 +429,6 @@ struct MCTS {
 		auto it = root_node->outgoing_edges.find(move);
 		// If we miss, just throw away everything and init from scratch.
 		if (it == root_node->outgoing_edges.end()) {
-//			cout << "Miss!" << endl;
 			makemove(root_board, move);
 			init_from_scratch(root_board);
 			return;
@@ -439,7 +436,6 @@ struct MCTS {
 		// Otherwise, reuse a subtree.
 		root_node = (*it).second.child_node;
 		root_board = root_node->board;
-//		cout << "Hit a subtree with: " << root_node->all_edge_visits << endl;
 	}
 };
 
@@ -460,13 +456,15 @@ json generate_game(int thread_id) {
 	Position board;
 	set_board(board, STARTING_GAME_POSITION);
 	MCTS mcts(thread_id, board, true);
-
 	json entry = {{"boards", {}}, {"moves", {}}};
+	int steps_done = 0;
 
 	for (unsigned int ply = 0; ply < maximum_game_plies; ply++) {
 		// Do a number of steps.
-		for (int step = 0; step < steps_per_move; step++)
+		while (mcts.root_node->all_edge_visits < steps_per_move) {
 			mcts.step();
+			steps_done++;
+		}
 		// Sample a move according to visit counts.
 		Move selected_move = sample_proportionally_to_visits(mcts.root_node);
 		Move training_move = selected_move;
@@ -474,19 +472,20 @@ json generate_game(int thread_id) {
 		if (ply < opening_randomization_schedule.size() and
 		    std::uniform_real_distribution<double>{0, 1}(generator) < opening_randomization_schedule[ply]) {
 			// Pick a random move.
-			//cout << "Picking random move." << endl;
 			int random_index = std::uniform_int_distribution<int>{0, static_cast<int>(mcts.root_node->evals.posterior.size()) - 1}(generator);
 			auto it = mcts.root_node->evals.posterior.begin();
 			std::advance(it, random_index);
 			selected_move = (*it).first;
 		}
-//		cout << "Move: " << move_string(selected_move) << endl;
 		entry["boards"].push_back(serialize_board_for_json(mcts.root_board));
 		entry["moves"].push_back(move_string(training_move));
 		mcts.play(selected_move);
 		if (get_board_result(mcts.root_node->board) != 0)
 			break;
 	}
+//	float work_factor = steps_done / (float)(steps_per_move * entry["moves"].size());
+//	cout << "Work factor: " << work_factor << endl;
+
 	entry["result"] = get_board_result(mcts.root_node->board);
 	return entry;
 }
@@ -502,6 +501,7 @@ std::list<Worker> global_workers;
 std::vector<Worker*> global_workers_by_id;
 float* global_fill_buffers[2];
 int global_buffer_entries;
+std::ofstream* global_output_file;
 
 int current_buffer = 0;
 int fill_levels[2] = {0, 0};
@@ -526,14 +526,18 @@ struct Worker {
 		: t(Worker::thread_main, thread_id) {}
 
 	static void thread_main(int thread_id) {
-//		cout << "Launching thread: " << thread_id << endl;
 		while (true) {
 			json game = generate_game(thread_id);
 			if (game["result"] == 0) {
 				cout << "Skipping game with null result." << endl;
 				continue;
 			}
-			cout << thread_id << " Game generated. Plies: " << game["moves"].size() << endl;
+			{
+				std::lock_guard<std::mutex> global_lock(global_mutex);
+				cout << thread_id << " Game generated. Plies: " << game["moves"].size() << endl;
+				(*global_output_file) << game << "\n";
+				global_output_file->flush();
+			}
 		}
 	}
 };
@@ -553,7 +557,6 @@ std::pair<const float*, double> request_evaluation(int thread_id, const float* f
 		worker.response_filled = false;
 		// Swap buffers if we filled up the current one.
 		if (fill_levels[current_buffer] == global_buffer_entries) {
-//			cout << "Flip buffer from " << current_buffer << endl;
 			global_filled_queue.push(current_buffer);
 			current_buffer = 1 - current_buffer;
 		}
@@ -573,36 +576,39 @@ extern "C" void launch_threads(float* fill_buffer1, float* fill_buffer2, int buf
 	global_buffer_entries = buffer_entries;
 	cout << "Launching into " << fill_buffer1 << ", " << fill_buffer2 << " with " << buffer_entries << " entries and " << thread_count << " threads." << endl;
 
+	std::string path = "games/self-play-";
+	for (int i = 0; i < 16; i++)
+		path += "0123456789abcdef"[std::uniform_int_distribution<int>{0, 15}(generator)];
+	path += ".json";
+	cout << "Writing to: " << path << endl;
+	global_output_file = new std::ofstream(path);
+
 	for (int i = 0; i < buffer_entries; i++) {
 		response_slots[0].push_back(ResponseSlot());
 		response_slots[1].push_back(ResponseSlot());
 	}
 
-	for (int i = 0; i < thread_count; i++) {
-		global_workers.emplace_back(i);
-		global_workers_by_id.push_back(&global_workers.back());
+	{
+		std::lock_guard<std::mutex> global_lock(global_mutex);
+		for (int i = 0; i < thread_count; i++) {
+			global_workers.emplace_back(i);
+			global_workers_by_id.push_back(&global_workers.back());
+		}
 	}
-//	for (std::thread& t : global_workers)
-//		t.join();
 }
 
 extern "C" int get_workload() {
 	while (true) {
 		{
-			// Check if a workload is ready.
 			std::lock_guard<std::mutex> global_lock(global_mutex);
-//			cout << "Levels: " << fill_levels[0] << " " << fill_levels[1] << endl;
-//			if (fill_levels[0] == global_buffer_entries)
-//				return 0;
-//			if (fill_levels[1] == global_buffer_entries)
-//				return 1;
+			// Check if a workload is ready.
 			if (not global_filled_queue.empty()) {
 				int workload_index = global_filled_queue.front();
 				global_filled_queue.pop();
 				return workload_index;
 			}
 		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		std::this_thread::sleep_for(std::chrono::microseconds(100));
 	}
 }
 
@@ -622,32 +628,4 @@ extern "C" void complete_workload(int workload, float* posteriors, float* values
 	}
 	fill_levels[workload] = 0;
 }
-
-#if 0
-int main(int argc, const char** argv) {
-	int my_number = std::stoi(argv[1]);
-	int port = std::stoi(argv[2]);
-	global_rpc_connection = new rpc::client("127.0.0.1", port);
-
-	std::string path = "games/self-play-";
-	for (int i = 0; i < 16; i++)
-		path += "0123456789abcdef"[std::uniform_int_distribution<int>{0, 15}(generator)];
-	path += ".json";
-
-	cout << my_number << " on port " << port << " writing to: " << path << endl;
-
-	std::ofstream out(path);
-
-	while (true) {
-		json game = generate_game();
-		if (game["result"] == 0) {
-			cout << "Skipping game with null result." << endl;
-			continue;
-		}
-		out << game << "\n";
-		out.flush();
-		cout << my_number << " Game generated." << endl;
-	}
-}
-#endif
 
