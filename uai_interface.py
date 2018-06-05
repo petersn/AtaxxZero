@@ -65,10 +65,10 @@ def main(args):
 		elif line.startswith("go movetime "):
 			ms = int(line[12:])
 			if args.visits == None:
-				move = eng.genmove(ms * 1e-3)
+				move = eng.genmove(ms * 1e-3, use_weighted_exponent=5.0)
 			else:
 				# This is safe, because of the visit limit we set above.
-				move = eng.genmove(1000000.0)
+				move = eng.genmove(1000000.0, use_weighted_exponent=5.0)
 			print "bestmove %s" % (uai_encode_move(move),)
 		elif line == "showboard":
 			print board

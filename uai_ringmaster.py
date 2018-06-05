@@ -13,7 +13,7 @@ class UAIPlayer:
 		# In theory the output pipe of this process could fill up before I read, making it hang.
 		# TODO: Decide if I care.
 		self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-		atexit.register(self.proc.kill)
+#		atexit.register(self.proc.kill)
 		self.send("uai\n")
 		self.send("setoption name Hash value 1024\n")
 #		self.send("setoption name Search value most-captures\n")

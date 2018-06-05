@@ -497,6 +497,7 @@ json generate_game(int thread_id) {
 		// Sample a move according to visit counts.
 		Move selected_move = sample_proportionally_to_visits(mcts.root_node);
 		Move training_move = selected_move;
+/*
 		// If appropriate choose a uniformly random legal move in the opening.
 		if (ply < opening_randomization_schedule.size() and
 		    std::uniform_real_distribution<double>{0, 1}(generator) < opening_randomization_schedule[ply]) {
@@ -506,6 +507,7 @@ json generate_game(int thread_id) {
 			std::advance(it, random_index);
 			selected_move = (*it).first;
 		}
+*/
 		entry["boards"].push_back(serialize_board_for_json(mcts.root_board));
 		entry["moves"].push_back(move_string(training_move));
 		mcts.play(selected_move);

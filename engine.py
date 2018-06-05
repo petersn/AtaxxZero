@@ -34,6 +34,16 @@ def setup_evaluator(use_rpc=False, temperature=0.0):
 	else:
 		global_evaluator = NNEvaluator(temperature=temperature)
 
+def sample_by_weight(weights):
+	assert abs(sum(weights.itervalues()) - 1) < 1e-6, "Distribution not normalized: %r" % (weights,)
+	x = random.random()
+	for outcome, weight in weights.iteritems():
+		if x <= weight:
+			return outcome
+		x -= weight
+	# If we somehow failed to pick anyone due to rounding then return an arbitrary element.
+	return weights.iterkeys().next()
+
 def softmax(logits):
 	"""Somewhat numerically stable softmax routine."""
 	e_x = np.exp(logits - np.max(logits))
@@ -446,7 +456,7 @@ class MCTSEngine:
 
 		self.mcts = MCTS(self.state)
 
-	def genmove(self, time_to_think, early_out=True):
+	def genmove(self, time_to_think, early_out=True, use_weighted_exponent=None):
 		start_time = time.time()
 		most_visited_edges = TopN(2, key=lambda edge: edge.edge_visits)
 		most_visited_edges.update(self.mcts.root_node.outgoing_edges.itervalues())
@@ -496,7 +506,23 @@ class MCTSEngine:
 		))
 		self.print_principal_variation()
 		logging.debug("Cache entries: %i" % (len(global_evaluator.cache),))
-		return most_visited_edges.entries[-1].move
+		if not use_weighted_exponent:
+			return most_visited_edges.entries[-1].move
+		else:
+			return self.sample_with_exponential_weight(use_weighted_exponent)
+
+	def sample_with_exponential_weight(self, exponent):
+		move_weights = {
+			move: (edge.edge_visits / float(self.mcts.root_node.all_edge_visits)) ** exponent
+			for move, edge in self.mcts.root_node.outgoing_edges.iteritems()
+		}
+		# Normalize the weights.
+		normalization = 1.0 / sum(move_weights.itervalues())
+		move_weights = {
+			move: weight * normalization
+			for move, weight in move_weights.iteritems()
+		}
+		return sample_by_weight(move_weights)
 
 	def genmove_with_time_control(self, our_time, our_increment):
 		# First, figure out how many plies we probably have remaining in the game.

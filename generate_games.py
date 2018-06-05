@@ -13,16 +13,6 @@ OPENING_RANDOMIZATION_SCHEDULE = [
 	for i in xrange(10)
 ]
 
-def sample_by_weight(weights):
-	assert abs(sum(weights.itervalues()) - 1) < 1e-6, "Distribution not normalized: %r" % (weights,)
-	x = random.random()
-	for outcome, weight in weights.iteritems():
-		if x <= weight:
-			return outcome
-		x -= weight
-	# If we somehow failed to pick anyone due to rounding then return an arbitrary element.
-	return weights.iterkeys().next()
-
 def generate_game(args):
 	board = ataxx_rules.AtaxxState.initial()
 	if not args.random_play:
@@ -50,11 +40,7 @@ def generate_game(args):
 					edge = m.step()
 					most_visits = max(most_visits, edge.edge_visits)
 				# Pick a move with noise.
-				move_weights = {
-					move: edge.edge_visits / float(m.root_node.all_edge_visits)
-					for move, edge in m.root_node.outgoing_edges.iteritems()
-				}
-				training_move = selected_move = sample_by_weight(move_weights)
+				training_move = selected_move = engine.sample_with_exponential_weight(1.0)
 
 			randomization_probability = 0.0
 			if ply < len(OPENING_RANDOMIZATION_SCHEDULE):
