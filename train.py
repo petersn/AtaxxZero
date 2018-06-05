@@ -58,26 +58,6 @@ def get_sample_from_entries(entries):
 		desired_policy = engine.encode_move_as_heatmap(move)
 		return features, desired_policy, desired_value
 
-#def get_sample_from_entries2(entries):
-#	while True:
-#		index = random.randrange(len(entries))
-#		entry = entries[index]
-#		ply = random.randrange(len(entry["boards"]))
-#		to_move = 1 if ply % 2 == 0 else 2
-#		board = ataxx_rules.AtaxxState(entry["boards"][ply], to_move=to_move)
-#		move  = entry["moves"][ply]
-#		if move == "pass":
-#			continue
-#		# Convert the board into encoded features.
-#		features = engine.board_to_features(board)
-#		desired_policy = engine.encode_move_as_heatmap(move)
-#		desired_value = [1 if entry["result"] == to_move else -1]
-#		# TODO: Add in random dihedral symmetry here.
-#		symmetry_index = random.randrange(8)
-#		features       = apply_symmetry(symmetry_index, features)
-#		desired_policy = apply_symmetry(symmetry_index, desired_policy)
-#		return (features, desired_policy, desired_value), index, ply, to_move, board, move
-
 def load_entries(paths):
 	entries = []
 	for path in paths:
@@ -90,15 +70,12 @@ def load_entries(paths):
 	random.shuffle(entries)
 	return entries
 
-def model_path(name):
-	return os.path.join("models", name + ".npy")
-
 if __name__ == "__main__":
 	import argparse
-	parser = argparse.ArgumentParser()
-	parser.add_argument("--games", metavar="PATH", required=True, nargs="+", help="Directory with .json self-play games.")
-	parser.add_argument("--old-name", metavar="NAME", help="Name for input network.")
-	parser.add_argument("--new-name", metavar="NAME", required=True, help="Name for output network.")
+	parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+	parser.add_argument("--games", metavar="PATH", required=True, nargs="+", help="Path to .json self-play games files.")
+	parser.add_argument("--old-path", metavar="PATH", help="Path for input network.")
+	parser.add_argument("--new-path", metavar="PATH", required=True, help="Path for output network.")
 	parser.add_argument("--steps", metavar="COUNT", type=int, default=1000, help="Training steps.")
 	parser.add_argument("--minibatch-size", metavar="COUNT", type=int, default=512, help="Minibatch size.")
 	parser.add_argument("--learning-rate", metavar="LR", type=float, default=0.002, help="Learning rate.")
@@ -122,9 +99,9 @@ if __name__ == "__main__":
 	sess.run(tf.initialize_all_variables())
 	model.sess = sess
 
-	if args.old_name != None:
+	if args.old_path != None:
 		print "Loading old model."
-		model.load_model(network, model_path(args.old_name))
+		model.load_model(network, args.old_path)
 	else:
 		print "WARNING: Not loading a previous model!"
 
@@ -162,5 +139,5 @@ if __name__ == "__main__":
 		network.train(minibatch, learning_rate=args.learning_rate)
 
 	# Write out the trained model.
-	model.save_model(network, model_path(args.new_name))
+	model.save_model(network, args.new_path)
 

@@ -11,6 +11,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
 #include <cmath>
 #include <cassert>
 
@@ -30,13 +31,18 @@ constexpr double exploration_parameter = 1.0;
 constexpr double dirichlet_alpha = 0.15;
 constexpr double dirichlet_weight = 0.25;
 constexpr int maximum_game_plies = 400;
-constexpr int steps_per_move = 400;
 const std::vector<double> opening_randomization_schedule {
 	0.2, 0.2, 0.1, 0.1, 0.05, 0.05, 0.025, 0.025, 0.0125, 0.0125,
 };
 
 std::random_device rd;
 std::default_random_engine generator(rd());
+
+// We raise this exception in worker threads when they're done.
+struct StopWorking : public std::exception {};
+
+// Configuration.
+int global_visits;
 
 // Extend Move with a hash.
 namespace std {
@@ -461,7 +467,7 @@ json generate_game(int thread_id) {
 
 	for (unsigned int ply = 0; ply < maximum_game_plies; ply++) {
 		// Do a number of steps.
-		while (mcts.root_node->all_edge_visits < steps_per_move) {
+		while (mcts.root_node->all_edge_visits < global_visits) {
 			mcts.step();
 			steps_done++;
 		}
@@ -483,7 +489,7 @@ json generate_game(int thread_id) {
 		if (get_board_result(mcts.root_node->board) != 0)
 			break;
 	}
-//	float work_factor = steps_done / (float)(steps_per_move * entry["moves"].size());
+//	float work_factor = steps_done / (float)(global_visits * entry["moves"].size());
 //	cout << "Work factor: " << work_factor << endl;
 
 	entry["result"] = get_board_result(mcts.root_node->board);
@@ -508,6 +514,7 @@ int fill_levels[2] = {0, 0};
 std::vector<ResponseSlot> response_slots[2];
 std::queue<int> global_filled_queue;
 std::mutex global_mutex;
+std::atomic<bool> keep_working;
 
 struct ResponseSlot {
 	int thread_id;
@@ -527,7 +534,12 @@ struct Worker {
 
 	static void thread_main(int thread_id) {
 		while (true) {
-			json game = generate_game(thread_id);
+			json game;
+			try {
+				game = generate_game(thread_id);
+			} catch (StopWorking& e) {
+				return;
+			}
 			if (game["result"] == 0) {
 				cout << "Skipping game with null result." << endl;
 				continue;
@@ -565,23 +577,28 @@ std::pair<const float*, double> request_evaluation(int thread_id, const float* f
 	// Wait on a reply.
 	Worker& worker = *global_workers_by_id[thread_id];
 	std::unique_lock<std::mutex> lk(worker.thread_mutex);
-	worker.cv.wait(lk, [&worker]{ return worker.response_filled; });
+	while (not worker.response_filled) {
+		worker.cv.wait_for(lk, std::chrono::milliseconds(250), [&worker]{
+			return worker.response_filled;
+		});
+		if (not keep_working) {
+			throw StopWorking();
+		}
+	}
 	// Response collected!
 	return {worker.response_posterior, worker.response_value};
 }
 
-extern "C" void launch_threads(float* fill_buffer1, float* fill_buffer2, int buffer_entries, int thread_count) {
+extern "C" void launch_threads(char* output_path, int visits, float* fill_buffer1, float* fill_buffer2, int buffer_entries, int thread_count) {
+	global_visits = visits;
 	global_fill_buffers[0] = fill_buffer1;
 	global_fill_buffers[1] = fill_buffer2;
 	global_buffer_entries = buffer_entries;
 	cout << "Launching into " << fill_buffer1 << ", " << fill_buffer2 << " with " << buffer_entries << " entries and " << thread_count << " threads." << endl;
 
-	std::string path = "games/self-play-";
-	for (int i = 0; i < 16; i++)
-		path += "0123456789abcdef"[std::uniform_int_distribution<int>{0, 15}(generator)];
-	path += ".json";
-	cout << "Writing to: " << path << endl;
-	global_output_file = new std::ofstream(path);
+	cout << "Writing to: " << output_path << endl;
+	global_output_file = new std::ofstream(output_path, std::ios_base::app);
+	keep_working = true;
 
 	for (int i = 0; i < buffer_entries; i++) {
 		response_slots[0].push_back(ResponseSlot());
@@ -597,7 +614,7 @@ extern "C" void launch_threads(float* fill_buffer1, float* fill_buffer2, int buf
 	}
 }
 
-extern "C" int get_workload() {
+extern "C" int get_workload(void) {
 	while (true) {
 		{
 			std::lock_guard<std::mutex> global_lock(global_mutex);
@@ -627,5 +644,16 @@ extern "C" void complete_workload(int workload, float* posteriors, float* values
 		worker.cv.notify_one();
 	}
 	fill_levels[workload] = 0;
+}
+
+extern "C" void shutdown(void) {
+	keep_working = false;
+	for (Worker& w : global_workers)
+		w.t.join();
+	// Clear out data structures to setup for another run.
+	for (int i : {0, 1})
+		response_slots[i].clear();
+	global_workers.clear();
+	global_workers_by_id.clear();
 }
 
