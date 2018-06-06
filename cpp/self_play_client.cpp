@@ -264,7 +264,7 @@ struct Evaluations {
 			double test_total = 0.0;
 			for (auto& p : posterior)
 				test_total += p.second;
-			assert(0.99 < test_total and test_total < 1.01);
+//			assert(0.99 < test_total and test_total < 1.01);
 		}
 	}
 };
