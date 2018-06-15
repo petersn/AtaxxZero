@@ -137,7 +137,8 @@ technically statistically biases the games slightly towards being shorter.)
 		games_paths = sum((index_to_games_paths(i) for i in xrange(low_index, high_index + 1)), [])
 		
 		print "Game paths:", games_paths
-		steps = args.training_steps_const + args.training_steps_linear * (len(games_paths) - 1)
+		steps = args.training_steps_const + args.training_steps_linear * (high_index - low_index + 1)
+		assert steps > 0
 		print "Steps:", steps
 		subprocess.check_call([
 			"python", "train.py",
