@@ -12,10 +12,11 @@ MOVE_TYPES = 17
 class Network:
 	INPUT_FEATURE_COUNT = 4
 	NONLINEARITY = [tf.nn.relu]
-	FILTERS = 96
+	FILTERS = 64
 	CONV_SIZE = 3
-	BLOCK_COUNT = 12
+	BLOCK_COUNT = 8
 	VALUE_FILTERS = 1
+#	VALUE_FC_SIZES = [BOARD_SIZE * BOARD_SIZE * VALUE_FILTERS, 32, 1]
 	POLICY_OUTPUT_SHAPE = [None, BOARD_SIZE, BOARD_SIZE, MOVE_TYPES]
 	VALUE_OUTPUT_SHAPE = [None, 1]
 
@@ -90,7 +91,7 @@ class Network:
 		reg_variables = tf.trainable_variables(scope=self.scope_name)
 		self.regularization_term = tf.contrib.layers.apply_regularization(regularizer, reg_variables)
 		# Loss is the sum of these three.
-		self.loss = 0.3 * self.policy_loss + self.value_loss + self.regularization_term
+		self.loss = 1.0 * self.policy_loss + self.value_loss + self.regularization_term
 
 		# Associate batch normalization with training.
 		update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=self.scope_name)

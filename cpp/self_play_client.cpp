@@ -31,9 +31,9 @@ constexpr double exploration_parameter = 1.0;
 constexpr double dirichlet_alpha = 0.15;
 constexpr double dirichlet_weight = 0.25;
 constexpr int maximum_game_plies = 400;
-const std::vector<double> opening_randomization_schedule {
-	0.2, 0.2, 0.1, 0.1, 0.05, 0.05, 0.025, 0.025, 0.0125, 0.0125,
-};
+//const std::vector<double> opening_randomization_schedule {
+//	0.2, 0.2, 0.1, 0.1, 0.05, 0.05, 0.025, 0.025, 0.0125, 0.0125,
+//};
 
 std::random_device rd;
 std::default_random_engine generator(rd());
@@ -211,8 +211,10 @@ struct Evaluations {
 		double total = 0.0;
 		for (int i = 0; i < (7 * 7 * 17); i++)
 			total += softmaxed[i];
-		for (int i = 0; i < (7 * 7 * 17); i++)
-			softmaxed[i] /= total;
+		if (total != 0.0) {
+			for (int i = 0; i < (7 * 7 * 17); i++)
+				softmaxed[i] /= total;
+		}
 
 		// Evaluate movegen.
 		double total_probability = 0.0;
@@ -235,11 +237,11 @@ struct Evaluations {
 			posterior.insert({move, probability});
 			total_probability += probability;
 		}
-		// Add a small constant denominator term to prevent diving by zero.
-		total_probability += 1e-6;
 		// Normalize the posterior.
-		for (auto& p : posterior)
-			p.second /= total_probability;
+		if (total_probability != 0.0) {
+			for (auto& p : posterior)
+				p.second /= total_probability;
+		}
 
 		assert(num_moves > 0);
 		assert(posterior.size() > 0);
@@ -338,12 +340,26 @@ struct MCTSNode {
 		// Find the best move according to total_action_score.
 		Move best_move = NO_MOVE;
 		double best_score = -1;
+		bool flag = false;
 		for (const auto p : evals.posterior) {
 			double score = total_action_score(p.first);
-			if (score > best_score) {
+			if (p.first == NO_MOVE) {
+				std::cerr << "Bad posterior had NO_MOVE in moves list." << endl;
+				std::cerr << "Posterior length: " << evals.posterior.size() << endl;
+				std::cerr << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" << endl;
+			}
+			assert(not std::isnan(score));
+			assert(score >= 0.0);
+			if (score >= best_score) {
 				best_move = p.first;
 				best_score = score;
+				flag = true;
 			}
+		}
+		if (best_move == NO_MOVE) {
+			std::cerr << "                  WARNING Best move is no move!" << endl;
+			std::cerr << "       Posterior size: " << evals.posterior.size() << endl;
+			std::cerr << "     Flag status: " << flag << " END FLAG" << endl;
 		}
 		return best_move;
 	}
@@ -442,8 +458,15 @@ struct MCTS {
 		}
 		if (edges_on_path.size() == 0) {
 			cout << ">>> No edges on path!" << endl;
-			print(root_board, false);
-			cout << ">>> Move:" << move_string(move) << endl;
+			print(root_board, true);
+			cout << "Valid moves list:" << endl;
+			print_moves(root_board);
+			cout << "Select action at root:" << endl;
+			Move selected_action = root_node->select_action();
+			cout << "Posterior length:" << root_node->evals.posterior.size() << endl;
+			cout << "Game over:" << root_node->evals.game_over << endl;
+			cout << "Here it is: " << selected_action.from << " " << selected_action.to << endl;
+			cout << ">>> Move:" << move.from << " " << move.to << endl;
 		}
 		assert(edges_on_path.size() != 0);
 	}
@@ -497,6 +520,7 @@ json generate_game(int thread_id) {
 		// Sample a move according to visit counts.
 		Move selected_move = sample_proportionally_to_visits(mcts.root_node);
 		Move training_move = selected_move;
+
 /*
 		// If appropriate choose a uniformly random legal move in the opening.
 		if (ply < opening_randomization_schedule.size() and
@@ -508,6 +532,7 @@ json generate_game(int thread_id) {
 			selected_move = (*it).first;
 		}
 */
+
 		entry["boards"].push_back(serialize_board_for_json(mcts.root_board));
 		entry["moves"].push_back(move_string(training_move));
 		mcts.play(selected_move);
@@ -584,11 +609,12 @@ std::pair<const float*, double> request_evaluation(int thread_id, const float* f
 	{
 		std::lock_guard<std::mutex> global_lock(global_mutex);
 		int slot_index = fill_levels[current_buffer]++;
+		assert(0 <= slot_index and slot_index < response_slots[0].size());
 		// Copy our features into the big buffer.
 		float* destination = global_fill_buffers[current_buffer] + (7 * 7 * 4) * slot_index;
 		std::copy(feature_string, feature_string + (7 * 7 * 4), destination);
 		// Place an entry requesting a reply.
-		response_slots[current_buffer][slot_index].thread_id = thread_id;
+		response_slots[current_buffer].at(slot_index).thread_id = thread_id;
 		// Set that we're waiting on a response.
 		Worker& worker = *global_workers_by_id[thread_id];
 		worker.response_filled = false;
@@ -606,9 +632,8 @@ std::pair<const float*, double> request_evaluation(int thread_id, const float* f
 		worker.cv.wait_for(lk, std::chrono::milliseconds(250), [&worker]{
 			return worker.response_filled;
 		});
-		if (not keep_working) {
+		if (not keep_working)
 			throw StopWorking();
-		}
 	}
 	// Response collected!
 	return {worker.response_posterior, worker.response_value};
@@ -657,8 +682,8 @@ extern "C" int get_workload(void) {
 extern "C" void complete_workload(int workload, float* posteriors, float* values) {
 	std::lock_guard<std::mutex> global_lock(global_mutex);
 	for (int i = 0; i < global_buffer_entries; i++) {
-		ResponseSlot& slot = response_slots[workload][i];
-		Worker& worker = *global_workers_by_id[slot.thread_id];
+		ResponseSlot& slot = response_slots[workload].at(i);
+		Worker& worker = *global_workers_by_id.at(slot.thread_id);
 		worker.response_value = values[i];
 		std::copy(posteriors, posteriors + (7 * 7 * 17), worker.response_posterior);
 		posteriors += (7 * 7 * 17);

@@ -4,6 +4,10 @@ import sys, string
 import ataxx_rules
 import engine
 
+if __name__ == "__main__":
+	engine.model.Network.FILTERS = 96
+	engine.model.Network.BLOCK_COUNT = 12
+
 def uai_encode_square(xy):
 	x, y = xy
 	y = 6 - y

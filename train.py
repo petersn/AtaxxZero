@@ -81,7 +81,7 @@ if __name__ == "__main__":
 	parser.add_argument("--new-path", metavar="PATH", required=True, help="Path for output network.")
 	parser.add_argument("--steps", metavar="COUNT", type=int, default=1000, help="Training steps.")
 	parser.add_argument("--minibatch-size", metavar="COUNT", type=int, default=512, help="Minibatch size.")
-	parser.add_argument("--learning-rate", metavar="LR", type=float, default=0.002, help="Learning rate.")
+	parser.add_argument("--learning-rate", metavar="LR", type=float, default=0.001, help="Learning rate.")
 	args = parser.parse_args()
 	print "Arguments:", args
 

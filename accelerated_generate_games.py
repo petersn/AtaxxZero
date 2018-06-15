@@ -48,6 +48,9 @@ signal.signal(signal.SIGINT, handler)
 workload_times = [time.time()]
 averaging_window = 1000
 
+# We have to keep references to recent arrays around so the C++ side doesn't accidentally try to read from them after they become invalid.
+recent_arrays = []
+
 while True:
 	workload_index = link.get_workload()
 	features = work_buffers[workload_index]
@@ -59,7 +62,10 @@ while True:
 		},
 	)
 	assert posteriors.dtype == np.float32
+	assert posteriors.flags.c_contiguous
 	assert values.dtype == np.float32
+	assert values.flags.c_contiguous
+	recent_arrays.append((posteriors, values))
 	# XXX: TODO: Worry a lot about whether or not `work_buffers`, `posteriors` and `values` are packed contiguously with the right stride ordering!
 	# I don't currently check this, and this is really important.
 	link.complete_workload(workload_index, ctypes.c_void_p(posteriors.ctypes.data), ctypes.c_void_p(values.ctypes.data))
@@ -72,4 +78,7 @@ while True:
 			rate * args.buffer_size * 1e-3,
 			len(workload_times) * args.buffer_size * 1e-3,
 		)
+
+	# Technically keeping just the two most recent should be sufficient to avoid any issues.
+	recent_arrays = recent_arrays[-6:]
 
