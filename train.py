@@ -60,7 +60,7 @@ def get_sample_from_entries(entries):
 			(model.BOARD_SIZE, model.BOARD_SIZE, model.MOVE_TYPES),
 			dtype=np.float32,
 		)
-		for move, probability in entry["dists"]["ply"].iteritems():
+		for move, probability in entry["dists"][ply].iteritems():
 			if isinstance(move, (str, unicode)):
 				move = uai_interface.uai_decode_move(move)
 			move = apply_symmetry_to_move(symmetry_index, move)
