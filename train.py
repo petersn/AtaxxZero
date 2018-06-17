@@ -49,16 +49,24 @@ def get_sample_from_entries(entries):
 		move  = entry["moves"][ply]
 		if move == "pass":
 			continue
-		if isinstance(move, (str, unicode)):
-			move = uai_interface.uai_decode_move(move)
 		# Convert the board into encoded features.
 		features = engine.board_to_features(board)
 		desired_value = [1 if entry["result"] == to_move else -1]
 		# Apply a dihedral symmetry.
 		symmetry_index = random.randrange(8)
 		features = apply_symmetry(symmetry_index, features)
-		move = apply_symmetry_to_move(symmetry_index, move)
-		desired_policy = engine.encode_move_as_heatmap(move)
+		# Build up a map of the desired result.
+		desired_policy = np.zeros(
+			(model.BOARD_SIZE, model.BOARD_SIZE, model.MOVE_TYPES),
+			dtype=np.float32,
+		)
+		for move, probability in entry["dists"]["ply"].iteritems():
+			if isinstance(move, (str, unicode)):
+				move = uai_interface.uai_decode_move(move)
+			move = apply_symmetry_to_move(symmetry_index, move)
+			engine.add_move_to_heatmap(desired_policy, move, probability)
+		assert abs(1 - desired_policy.sum()) < 1e-3
+#		desired_policy = engine.encode_move_as_heatmap(move)
 		return features, desired_policy, desired_value
 
 def load_entries(paths):

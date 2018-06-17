@@ -75,19 +75,22 @@ position_delta_layers = {delta: i for i, delta in enumerate(ataxx_rules.FAR_NEIG
 assert len(position_delta_layers) == 16
 FAR_NEIGHBOR_OFFSETS_SET = frozenset(ataxx_rules.FAR_NEIGHBOR_OFFSETS)
 
+def add_move_to_heatmap(heatmap, move, coef=1):
+	# TODO: DRY this with the below code.
+	start, end = move
+	if start == "c":
+		heatmap[end[0], end[1], model.MOVE_TYPES - 1] += coef
+	else:
+		delta = end[0] - start[0], end[1] - start[1]
+		layer = position_delta_layers[delta]
+		heatmap[end[0], end[1], layer] += coef
+
 def encode_move_as_heatmap(move):
 	heatmap = np.zeros(
 		(model.BOARD_SIZE, model.BOARD_SIZE, model.MOVE_TYPES),
 		dtype=np.int8,
 	)
-	# TODO: DRY this with the below code.
-	start, end = move
-	if start == "c":
-		heatmap[end[0], end[1], model.MOVE_TYPES - 1] = 1
-	else:
-		delta = end[0] - start[0], end[1] - start[1]
-		layer = position_delta_layers[delta]
-		heatmap[end[0], end[1], layer] = 1
+	add_move_to_heatmap(heatmap, move)
 	assert heatmap.sum() == 1
 	return heatmap
 
@@ -429,7 +432,7 @@ class MCTSEngine:
 		9: 0.9,
 	}
 	# XXX: This is awful. Switch this over to run-time benchmarking.
-	MAX_STEPS_PER_SECOND = 1000.0
+	MAX_STEPS_PER_SECOND = 1500.0
 
 	def __init__(self):
 		self.state = ataxx_rules.AtaxxState.initial()
@@ -555,7 +558,7 @@ if __name__ == "__main__":
 		format="[%(process)5d] %(message)s",
 		level=logging.DEBUG,
 	)
-	initialize_model("models/model-010.npy")
+	initialize_model("models/96x12-sample.npy")
 	setup_evaluator()
 	engine = MCTSEngine()
 	for _ in xrange(2):
