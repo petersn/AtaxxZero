@@ -508,7 +508,7 @@ json generate_game(int thread_id) {
 	Position board;
 	set_board(board, STARTING_GAME_POSITION);
 	MCTS mcts(thread_id, board, true);
-	json entry = {{"boards", {}}, {"moves", {}}};
+	json entry = {{"boards", {}}, {"moves", {}}, {"dists", {}}};
 	int steps_done = 0;
 
 	for (unsigned int ply = 0; ply < maximum_game_plies; ply++) {
@@ -532,9 +532,14 @@ json generate_game(int thread_id) {
 			selected_move = (*it).first;
 		}
 */
-
 		entry["boards"].push_back(serialize_board_for_json(mcts.root_board));
 		entry["moves"].push_back(move_string(training_move));
+		entry["dists"].push_back({});
+		// Write out the entire visit distribution.
+		for (const std::pair<Move, MCTSEdge>& p : mcts.root_node->outgoing_edges) {
+			double weight = p.second.edge_visits / mcts.root_node->all_edge_visits;
+			entry["dists"].back()[move_string(p.first)] = weight;
+		}
 		mcts.play(selected_move);
 		if (get_board_result(mcts.root_node->board) != 0)
 			break;
