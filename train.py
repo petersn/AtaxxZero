@@ -61,7 +61,7 @@ def get_sample_from_entries(entries):
 			dtype=np.float32,
 		)
 		if "dists" not in entry:
-			distribution = {move: 1}
+			distribution = {uai_interface.uai_encode_move(move): 1}
 		else:
 			distribution = entry["dists"][ply]
 		for move, probability in distribution.iteritems():
