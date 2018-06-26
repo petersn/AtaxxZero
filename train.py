@@ -44,6 +44,9 @@ def get_sample_from_entries(entries):
 	while True:
 		entry = random.choice(entries)
 		ply = random.randrange(len(entry["boards"]))
+		if "random_ply" in entry:
+			# Note that we need the +1 because we want to train on the board state just AFTER the random move was performed.
+			ply = entry["random_ply"] + 1
 		to_move = 1 if ply % 2 == 0 else 2
 		board = ataxx_rules.AtaxxState(entry["boards"][ply], to_move=to_move).copy()
 		move  = entry["moves"][ply]
