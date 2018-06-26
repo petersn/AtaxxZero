@@ -21,6 +21,7 @@
 #include "other.hpp"
 
 #define STARTING_GAME_POSITION "x5o/7/3-3/2-1-2/3-3/7/o5x x"
+#define ONE_RANDOM_MOVE
 
 using json = nlohmann::json;
 using std::shared_ptr;
@@ -511,6 +512,11 @@ json generate_game(int thread_id) {
 	json entry = {{"boards", {}}, {"moves", {}}, {"dists", {}}};
 	int steps_done = 0;
 
+#ifdef ONE_RANDOM_MOVE
+	int random_ply = std::uniform_int_distribution<int>{0, 119}(generator);
+	entry["random_ply"] = random_ply;
+#endif
+
 	for (unsigned int ply = 0; ply < maximum_game_plies; ply++) {
 		// Do a number of steps.
 		while (mcts.root_node->all_edge_visits < global_visits) {
@@ -519,7 +525,31 @@ json generate_game(int thread_id) {
 		}
 		// Sample a move according to visit counts.
 		Move selected_move = sample_proportionally_to_visits(mcts.root_node);
-		Move training_move = selected_move;
+
+#ifdef ONE_RANDOM_MOVE
+		// If we're AT the randomization point then instead pick a uniformly random legal move.
+		if (ply == random_ply) {
+			// Pick a random move.
+			int random_index = std::uniform_int_distribution<int>{
+				0,
+				static_cast<int>(mcts.root_node->evals.posterior.size()) - 1,
+			}(generator);
+			auto it = mcts.root_node->evals.posterior.begin();
+			std::advance(it, random_index);
+			selected_move = (*it).first;
+		}
+
+		// If we're AFTER the randomization point then pick the best move we found.
+		if (ply > random_ply) {
+			int most_visits = -1;
+			for (const std::pair<Move, MCTSEdge>& p : mcts.root_node->outgoing_edges) {
+				if (p.second.edge_visits > most_visits) {
+					selected_move = p.first;
+					most_visits = p.second.edge_visits;
+				}
+			}
+		}
+#endif
 
 /*
 		// If appropriate choose a uniformly random legal move in the opening.
@@ -533,7 +563,7 @@ json generate_game(int thread_id) {
 		}
 */
 		entry["boards"].push_back(serialize_board_for_json(mcts.root_board));
-		entry["moves"].push_back(move_string(training_move));
+		entry["moves"].push_back(move_string(selected_move));
 		entry["dists"].push_back({});
 		// Write out the entire visit distribution.
 		for (const std::pair<Move, MCTSEdge>& p : mcts.root_node->outgoing_edges) {
@@ -597,6 +627,10 @@ struct Worker {
 			}
 			if (game["result"] == 0) {
 				cout << "Skipping game with null result." << endl;
+				continue;
+			}
+			if (game["random_ply"] >= game["moves"].size()) {
+				cout << "Skipping game with no uniformly random move." << endl;
 				continue;
 			}
 			{
