@@ -629,7 +629,7 @@ struct Worker {
 				cout << "Skipping game with null result." << endl;
 				continue;
 			}
-			if (game["random_ply"] + 1 >= game["moves"].size()) {
+			if (game["random_ply"].get<int>() + 1 >= game["moves"].size()) {
 				cout << "Skipping game with no board state just after the uniformly random move." << endl;
 				continue;
 			}
