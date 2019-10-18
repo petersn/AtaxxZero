@@ -21,7 +21,7 @@
 #include "other.hpp"
 
 #define STARTING_GAME_POSITION "x5o/7/3-3/2-1-2/3-3/7/o5x x"
-#define ONE_RANDOM_MOVE
+//#define ONE_RANDOM_MOVE
 
 using json = nlohmann::json;
 using std::shared_ptr;
@@ -629,10 +629,12 @@ struct Worker {
 				cout << "Skipping game with null result." << endl;
 				continue;
 			}
+#ifdef ONE_RANDOM_MOVE
 			if (game["random_ply"].get<int>() + 1 >= game["moves"].size()) {
 				cout << "Skipping game with no board state just after the uniformly random move." << endl;
 				continue;
 			}
+#endif
 			{
 				std::lock_guard<std::mutex> global_lock(global_mutex);
 				cout << thread_id << " Game generated. Plies: " << game["moves"].size() << endl;

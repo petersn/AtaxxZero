@@ -12,9 +12,9 @@ MOVE_TYPES = 17
 class Network:
 	INPUT_FEATURE_COUNT = 4
 	NONLINEARITY = [tf.nn.relu]
-	FILTERS = 64
+	FILTERS = 16
 	CONV_SIZE = 3
-	BLOCK_COUNT = 8
+	BLOCK_COUNT = 2
 	VALUE_FILTERS = 1
 #	VALUE_FC_SIZES = [BOARD_SIZE * BOARD_SIZE * VALUE_FILTERS, 32, 1]
 	POLICY_OUTPUT_SHAPE = [None, BOARD_SIZE, BOARD_SIZE, MOVE_TYPES]
@@ -183,7 +183,7 @@ def save_model(net, path):
 
 # XXX: Still horrifically fragile wrt batch norm variables due to the above horrible graph scraping stuff.
 def load_model(net, path):
-	x_conv_weights, x_bn_params = np.load(path)
+	x_conv_weights, x_bn_params = np.load(path, allow_pickle=True)
 	assert len(net.parameters) == len(x_conv_weights), "Parameter count mismatch!"
 	operations = []
 	for var, value in zip(net.parameters, x_conv_weights):
