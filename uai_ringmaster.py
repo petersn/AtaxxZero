@@ -69,11 +69,11 @@ class UAIPlayer:
 		return s
 
 def play_one_game(args, engine1, engine2, opening_moves):
-	print 'Game: "%s" vs "%s" with opening: [%s]' % (
+	print('Game: "%s" vs "%s" with opening: [%s]' % (
 		" ".join(engine1),
 		" ".join(engine2),
 		", ".join(uai_interface.uai_encode_move(move) for move in opening_moves),
-	)
+	))
 	game = {
 		"moves": [],
 		"opening": opening_moves,
@@ -88,13 +88,13 @@ def play_one_game(args, engine1, engine2, opening_moves):
 
 	def print_state():
 		if args.show_games:
-			print
-			print "===================== Player %i move." % (ply_number % 2 + 1,)
-			print "[%3i plies] Score: %2i - %2i" % (ply_number, board.board.count(1), board.board.count(2))
-			print board.fen()
-			print board
+			print()
+			print("===================== Player %i move." % (ply_number % 2 + 1,))
+			print("[%3i plies] Score: %2i - %2i" % (ply_number, board.board.count(1), board.board.count(2)))
+			print(board.fen())
+			print(board)
 		else:
-			print "\r[%3i plies] Score: %2i - %2i " % (ply_number, board.board.count(1), board.board.count(2)),
+			print("\r[%3i plies] Score: %2i - %2i " % (ply_number, board.board.count(1), board.board.count(2)), end=' ')
 			sys.stdout.flush()
 
 	while board.result() == None:
@@ -108,16 +108,16 @@ def play_one_game(args, engine1, engine2, opening_moves):
 			ms = int(args.tc * 1000)
 			move = players[ply_number % 2].genmove(ms)
 		if args.show_games:
-			print "Move:", uai_interface.uai_encode_move(move)
+			print("Move:", uai_interface.uai_encode_move(move))
 		try:
 			board.move(move)
 		except Exception as e:
-			print "Exception:", e
-			print move
-			print board
-			print game
-			print board.fen()
-			print uai_interface.uai_encode_move(move)
+			print("Exception:", e)
+			print(move)
+			print(board)
+			print(game)
+			print(board.fen())
+			print(uai_interface.uai_encode_move(move))
 			raise e
 		game["moves"].append(move)
 		for player in players:
@@ -141,29 +141,29 @@ def play_one_game(args, engine1, engine2, opening_moves):
 	print_state()
 	# Print a final newline to finish the line we're "\r"ing over and over.
 	if not args.show_games:
-		print
+		print()
 
 	return game
 
 def write_game_to_pgn(args, path, game, round_index=1):
 	with open(path, "a+") as f:
-		print >>f, '[Event "?"]'
-		print >>f, '[Site "?"]'
-		print >>f, '[Date "%s"]' % (datetime.datetime.now().strftime("%Y.%m.%d"),)
-		print >>f, '[Round "%i"]' % (round_index,)
-		print >>f, '[White "%s"]' % (" ".join(game["white"]),)
-		print >>f, '[Black "%s"]' % (" ".join(game["black"]),)
-		print >>f, '[Opening "%s"]' % (", ".join(map(uai_interface.uai_encode_move, game["opening"])),)
-		print >>f, '[GameStartTime "%s"]' % (datetime.datetime.fromtimestamp(game["start_time"]).isoformat(),)
-		print >>f, '[GameEndTime "%s"]' % (datetime.datetime.fromtimestamp(game["end_time"]).isoformat(),)
-		print >>f, '[Plycount "%i"]' % (len(game["moves"]),)
+		print('[Event "?"]', file=f)
+		print('[Site "?"]', file=f)
+		print('[Date "%s"]' % (datetime.datetime.now().strftime("%Y.%m.%d"),), file=f)
+		print('[Round "%i"]' % (round_index,), file=f)
+		print('[White "%s"]' % (" ".join(game["white"]),), file=f)
+		print('[Black "%s"]' % (" ".join(game["black"]),), file=f)
+		print('[Opening "%s"]' % (", ".join(map(uai_interface.uai_encode_move, game["opening"])),), file=f)
+		print('[GameStartTime "%s"]' % (datetime.datetime.fromtimestamp(game["start_time"]).isoformat(),), file=f)
+		print('[GameEndTime "%s"]' % (datetime.datetime.fromtimestamp(game["end_time"]).isoformat(),), file=f)
+		print('[Plycount "%i"]' % (len(game["moves"]),), file=f)
 		result_string = {1: "1-0", 2: "0-1", "invalid": "1/2-1/2"}[game["result"]]
-		print >>f, '[Result "%s"]' % (result_string,)
-		print >>f, '[FinalScore "%i-%i"]' % game["final_score"]
-		print >>f, '[TimeControl "+%r"]' % (args.tc,)
-		print >>f
-		print >>f, " ".join(map(uai_interface.uai_encode_move, game["moves"]))
-		print >>f
+		print('[Result "%s"]' % (result_string,), file=f)
+		print('[FinalScore "%i-%i"]' % game["final_score"], file=f)
+		print('[TimeControl "+%r"]' % (args.tc,), file=f)
+		print(file=f)
+		print(" ".join(map(uai_interface.uai_encode_move, game["moves"])), file=f)
+		print(file=f)
 #		for i, m in game["moves"]:
 #			if i % 2 == 0:
 #				print >>f, "%i. "
@@ -175,7 +175,7 @@ def get_opening(args):
 		return [uai_interface.uai_decode_move(m.strip()) for m in args.opening.split(",")]
 	board = ataxx_rules.AtaxxState.initial()
 	opening_moves = []
-	for _ in xrange(OPENING_DEPTH):
+	for _ in range(OPENING_DEPTH):
 		move = random.choice(board.legal_moves())
 		opening_moves.append(move)
 		board.move(move)
@@ -192,12 +192,12 @@ if __name__ == "__main__":
 	parser.add_argument("--gauntlet", action="store_true", help="Just the first engine plays against all the other engines.")
 	parser.add_argument("--tc", metavar="SEC", type=float, default=1.0, help="Seconds per move for all engines.")
 	args = parser.parse_args()
-	print "Options:", args
+	print("Options:", args)
 
-	print "Engines:"
-	engines = map(tuple, map(shlex.split, args.engine))
+	print("Engines:")
+	engines = list(map(tuple, list(map(shlex.split, args.engine))))
 	for i, engine in enumerate(engines):
-		print "%4i: %s" % (i + 1, engine)
+		print("%4i: %s" % (i + 1, engine))
 
 	win_counter = {engine: 0 for engine in engines}
 	games_written = 0
@@ -241,10 +241,10 @@ if __name__ == "__main__":
 			win_counter[engine_pair[0]] += 0.5
 			win_counter[engine_pair[1]] += 0.5
 			annulled_games += 1
-		print "Wins: %s (annulled: %i)" % (
+		print("Wins: %s (annulled: %i)" % (
 			" - ".join(str(win_counter[eng]) for eng in engines),
 			annulled_games,
-		)
+		))
 
 		if args.pgn_out:
 			games_written += 1

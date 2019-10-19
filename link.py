@@ -38,7 +38,7 @@ if __name__ == "__main__":
 		for _ in (0, 1)
 	]
 	launch_threads(
-		"/dev/null",
+		b"/dev/null",
 		ctypes.c_void_p(arrays[0].ctypes.data),
 		ctypes.c_void_p(arrays[1].ctypes.data),
 		buffer_entries,

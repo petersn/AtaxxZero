@@ -12,11 +12,11 @@ def count_games(paths):
 	return total_games
 
 def kill(proc):
-	print "Killing:", proc
+	print("Killing:", proc)
 	try:
 		os.kill(proc.pid, signal.SIGTERM)
-	except Exception, e:
-		print "ERROR in kill:", e
+	except Exception as e:
+		print("ERROR in kill:", e)
 	proc.kill()
 
 def generate_games(model_number):
@@ -26,7 +26,7 @@ def generate_games(model_number):
 
 	# Before we even launch check if we have enough games.
 	if count_games(index_to_games_paths(model_number)) >= args.game_count:
-		print "Enough games to start with!"
+		print("Enough games to start with!")
 		return
 
 	# Launch the games generation.
@@ -50,7 +50,7 @@ def generate_games(model_number):
 	# We now periodically check up on how many games we have.
 	while True:
 		game_count = count_games(index_to_games_paths(model_number))
-		print "Game count:", game_count
+		print("Game count:", game_count)
 		time.sleep(10)
 		if game_count >= args.game_count:
 			break
@@ -62,7 +62,7 @@ def generate_games(model_number):
 	time.sleep(2)
 	for proc in games_processes:
 		kill(proc)
-	print "Exiting."
+	print("Exiting.")
 
 def index_to_model_path(i):
 	return os.path.join(args.prefix, "models", "model-%03i.npy" % i)
@@ -70,7 +70,7 @@ def index_to_model_path(i):
 def index_to_games_paths(i):
 	return [
 		os.path.join(args.prefix, "games", "model-%03i-%i.json" % (i, process_index))
-		for process_index in xrange(args.parallel_games_processes)
+		for process_index in range(args.parallel_games_processes)
 	]
 
 if __name__ == "__main__":
@@ -104,7 +104,7 @@ technically statistically biases the games slightly towards being shorter.)
 		formatter_class=Formatter,
 	)
 	parser.add_argument("--prefix", metavar="PATH", default=".", help="Prefix directory. Make sure this directory contains games/ and models/ subdirectories.")
-	parser.add_argument("--visits", metavar="N", type=int, default=200, help="At each move in the self-play games perform MCTS until the root node has N visits.")
+	parser.add_argument("--visits", metavar="N", type=int, default=400, help="At each move in the self-play games perform MCTS until the root node has N visits.")
 	parser.add_argument("--game-count", metavar="N", type=int, default=500, help="Minimum number of games to generate per iteration.")
 	parser.add_argument("--training-steps-const", metavar="N", type=int, default=200, help="Base number of training steps to perform per iteration.")
 	parser.add_argument("--training-steps-linear", metavar="N", type=int, default=50, help="We also apply an additional N steps for each additional iteration included in the training window.")
@@ -112,7 +112,7 @@ technically statistically biases the games slightly towards being shorter.)
 	parser.add_argument("--training-window-exclude", metavar="N", type=int, default=3, help="To help things get started faster we exclude games from the very first N iterations from later training game windows.")
 	parser.add_argument("--parallel-games-processes", metavar="N", type=int, default=1, help="Number of games processes to run in parallel.")
 	args = parser.parse_args()
-	print "Arguments:", args
+	print("Arguments:", args)
 
 	current_model_number = 1
 
@@ -122,24 +122,24 @@ technically statistically biases the games slightly towards being shorter.)
 		new_model = index_to_model_path(current_model_number + 1)
 
 		if os.path.exists(new_model):
-			print "Model already exists, skipping:", new_model
+			print("Model already exists, skipping:", new_model)
 			current_model_number += 1
 			continue
 
-		print "=========================== Doing data generation for:", old_model
-		print "Start time:", start
+		print("=========================== Doing data generation for:", old_model)
+		print("Start time:", start)
 		generate_games(current_model_number)
 
-		print "=========================== Doing training:", old_model, "->", new_model
+		print("=========================== Doing training:", old_model, "->", new_model)
 		# Figure out the directories of games to train on.
 		low_index = min(current_model_number, max(args.training_window_exclude + 1, current_model_number - args.training_window + 1))
 		high_index = current_model_number
-		games_paths = sum((index_to_games_paths(i) for i in xrange(low_index, high_index + 1)), [])
-		
-		print "Game paths:", games_paths
+		games_paths = sum((index_to_games_paths(i) for i in range(low_index, high_index + 1)), [])
+
+		print("Game paths:", games_paths)
 		steps = args.training_steps_const + args.training_steps_linear * (high_index - low_index + 1)
 		assert steps > 0
-		print "Steps:", steps
+		print("Steps:", steps)
 		subprocess.check_call([
 			"python", "train.py",
 				"--steps", str(steps),
@@ -149,6 +149,6 @@ technically statistically biases the games slightly towards being shorter.)
 		], close_fds=True)
 
 		end = time.time()
-		print "Total seconds for iteration:", end - start
+		print("Total seconds for iteration:", end - start)
 		current_model_number += 1
 

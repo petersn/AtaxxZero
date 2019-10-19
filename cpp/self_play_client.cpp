@@ -15,7 +15,7 @@
 #include <cmath>
 #include <cassert>
 
-#include <json.hpp>
+#include "json.hpp"
 #include "movegen.hpp"
 #include "makemove.hpp"
 #include "other.hpp"
@@ -413,7 +413,7 @@ struct MCTS {
 			edges_on_path.push_back(&edge);
 			node = edge.child_node;
 		}
-		return {node, move, edges_on_path};
+		return std::tuple<shared_ptr<MCTSNode>, Move, std::vector<MCTSEdge*>>{node, move, edges_on_path};
 	}
 
 	void step() {

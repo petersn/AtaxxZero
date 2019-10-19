@@ -27,7 +27,7 @@ def initialize_model(path):
 def setup_evaluator(use_rpc=False, temperature=0.0):
 	global global_evaluator
 	if use_rpc:
-		print "Using RPC evaluator."
+		print("Using RPC evaluator.")
 		import rpc_client
 		rpc_client.setup_rpc()
 		global_evaluator = rpc_client.RPCEvaluator(temperature=temperature)
@@ -35,14 +35,14 @@ def setup_evaluator(use_rpc=False, temperature=0.0):
 		global_evaluator = NNEvaluator(temperature=temperature)
 
 def sample_by_weight(weights):
-	assert abs(sum(weights.itervalues()) - 1) < 1e-6, "Distribution not normalized: %r" % (weights,)
+	assert abs(sum(weights.values()) - 1) < 1e-6, "Distribution not normalized: %r" % (weights,)
 	x = random.random()
-	for outcome, weight in weights.iteritems():
+	for outcome, weight in weights.items():
 		if x <= weight:
 			return outcome
 		x -= weight
 	# If we somehow failed to pick anyone due to rounding then return an arbitrary element.
-	return weights.iterkeys().next()
+	return next(iter(weights.keys()))
 
 def softmax(logits):
 	"""Somewhat numerically stable softmax routine."""
@@ -54,8 +54,8 @@ def board_to_features(board):
 		(model.BOARD_SIZE, model.BOARD_SIZE, model.Network.INPUT_FEATURE_COUNT),
 		dtype=np.int8,
 	)
-	for y in xrange(model.BOARD_SIZE):
-		for x in xrange(model.BOARD_SIZE):
+	for y in range(model.BOARD_SIZE):
+		for x in range(model.BOARD_SIZE):
 			# Fill layer 0 will ones, to help the convolution out.
 			features[x, y, 0] = 1
 			# Put the piece into a layer 1 if it's of the player to move, and otherwise layer 2.
@@ -117,10 +117,10 @@ def add_dirichlet_noise_to_posterior(posterior, alpha, weight):
 	noise = np.random.dirichlet([alpha] * len(posterior))
 	posterior = {
 		move: (1.0 - weight) * prob + weight * n
-		for (move, prob), n in zip(posterior.iteritems(), noise)
+		for (move, prob), n in zip(iter(posterior.items()), noise)
 	}
 	# TODO: Comment this out.
-	assert abs(sum(posterior.itervalues()) - 1) < 1e-3
+	assert abs(sum(posterior.values()) - 1) < 1e-3
 	return posterior
 
 class NNEvaluator:
@@ -174,7 +174,7 @@ class NNEvaluator:
 
 		# Evaluate the boards together.
 		self.ensemble_sizes.append(len(ensemble))
-		features = map(board_to_features, ensemble)
+		features = list(map(board_to_features, ensemble))
 		posteriors, values = sess.run(
 			[network.policy_output, network.value_output],
 			feed_dict={
@@ -189,8 +189,8 @@ class NNEvaluator:
 			softmax_posterior = softmax(raw_posterior)
 			posterior = {move: get_move_score(softmax_posterior, move) for move in board.legal_moves()}
 			# Renormalize the posterior. Add a small epsilon into the denominator to prevent divison by zero.
-			denominator = sum(posterior.itervalues()) + 1e-6
-			posterior = {move: prob / denominator for move, prob in posterior.iteritems()}
+			denominator = sum(posterior.values()) + 1e-6
+			posterior = {move: prob / denominator for move, prob in posterior.items()}
 			entry = NNEvaluator.Entry(board=board, value=value, posterior=posterior, game_over=False)
 			self.cache[NNEvaluator.board_key(board)] = entry
 
@@ -287,9 +287,9 @@ class MCTSNode:
 
 	def make_graph(self, name_cache):
 		l = []
-		for edge in self.outgoing_edges.itervalues():
+		for edge in self.outgoing_edges.values():
 			l.append("%s -> %s;" % (self.graph_name(name_cache), edge.child_node.graph_name(name_cache)))
-		for edge in self.outgoing_edges.itervalues():
+		for edge in self.outgoing_edges.values():
 			# Quadratic time here from worst case for deep graphs.
 			l.extend(edge.child_node.make_graph(name_cache))
 		return l
@@ -323,7 +323,7 @@ class MCTS:
 			if best:
 				if not node.outgoing_edges:
 					break
-				move = max(node.outgoing_edges.itervalues(), key=lambda edge: edge.edge_visits).move
+				move = max(iter(node.outgoing_edges.values()), key=lambda edge: edge.edge_visits).move
 			else:
 				move = node.select_action(
 					# Use dirichlet noise only if we are configured to, AND only at the root of the search tree.
@@ -346,24 +346,24 @@ class MCTS:
 			new_board = node.board.copy()
 			try:
 				new_board.move(move)
-			except AssertionError, e:
+			except AssertionError as e:
 				import sys
-				print >>sys.stderr, node.board
-				print >>sys.stderr, node.board.legal_moves()
-				print >>sys.stderr, move in node.board.legal_moves()
-				print >>sys.stderr, new_board
-				print >>sys.stderr, new_board.legal_moves()
-				print >>sys.stderr, move in new_board.legal_moves()
-				print >>sys.stderr, self.root_node.outgoing_edges
-				print >>sys.stderr, self.root_node.all_edge_visits
-				print >>sys.stderr, self.root_node.select_action()
-				print >>sys.stderr, self.root_node.board.evaluations.posterior
-				print >>sys.stderr, self.root_node.board.evaluations.value
+				print(node.board, file=sys.stderr)
+				print(node.board.legal_moves(), file=sys.stderr)
+				print(move in node.board.legal_moves(), file=sys.stderr)
+				print(new_board, file=sys.stderr)
+				print(new_board.legal_moves(), file=sys.stderr)
+				print(move in new_board.legal_moves(), file=sys.stderr)
+				print(self.root_node.outgoing_edges, file=sys.stderr)
+				print(self.root_node.all_edge_visits, file=sys.stderr)
+				print(self.root_node.select_action(), file=sys.stderr)
+				print(self.root_node.board.evaluations.posterior, file=sys.stderr)
+				print(self.root_node.board.evaluations.value, file=sys.stderr)
 				del self.root_node.board.evaluations
 				global_evaluator.populate(self.root_node.board)
-				print >>sys.stderr, self.root_node.board.evaluations.posterior
-				print >>sys.stderr, self.root_node.board.evaluations.value
-				print >>sys.stderr, "Move:", move
+				print(self.root_node.board.evaluations.posterior, file=sys.stderr)
+				print(self.root_node.board.evaluations.value, file=sys.stderr)
+				print("Move:", move, file=sys.stderr)
 				raise e
 			new_node = MCTSNode(new_board, parent=node)
 			new_node.graph_name_suffix = to_move_name(move)
@@ -375,7 +375,7 @@ class MCTS:
 		# 3a) Evaluate the new node.
 		global_evaluator.populate(new_node.board)
 		# 3b) Queue up some children just for efficiency.
-		for m, probability in new_node.board.evaluations.posterior.iteritems():
+		for m, probability in new_node.board.evaluations.posterior.items():
 			if probability > NNEvaluator.PROBABILITY_THRESHOLD:
 				new_board = new_node.board.copy()
 				new_board.move(m)
@@ -444,8 +444,8 @@ class MCTSEngine:
 		# TODO: Evaluate if this can cause a really rare bug.
 
 		# Check to see if this board is one of our children's children.
-		for edge1 in self.mcts.root_node.outgoing_edges.itervalues():
-			for edge2 in edge1.child_node.outgoing_edges.itervalues():
+		for edge1 in self.mcts.root_node.outgoing_edges.values():
+			for edge2 in edge1.child_node.outgoing_edges.values():
 				if edge2.child_node.board == new_board:
 					# We found a match! Reuse part of the tree.
 					self.mcts.play(self.state.to_move, edge1.move)
@@ -462,9 +462,9 @@ class MCTSEngine:
 	def genmove(self, time_to_think, early_out=True, use_weighted_exponent=None):
 		start_time = time.time()
 		most_visited_edges = TopN(2, key=lambda edge: edge.edge_visits)
-		most_visited_edges.update(self.mcts.root_node.outgoing_edges.itervalues())
+		most_visited_edges.update(iter(self.mcts.root_node.outgoing_edges.values()))
 		total_steps = 0
-		for step_number in xrange(self.MAX_STEPS):
+		for step_number in range(self.MAX_STEPS):
 			now = time.time()
 			# Compute remaining time we have left to think.
 			remaining_time = time_to_think - (now - start_time)
@@ -502,7 +502,7 @@ class MCTSEngine:
 			"\n".join(
 				"    " + str(edge)
 				for edge in sorted(
-					self.mcts.root_node.outgoing_edges.itervalues(),
+					iter(self.mcts.root_node.outgoing_edges.values()),
 					key=lambda edge: -edge.edge_visits,
 				)
 			),
@@ -517,13 +517,13 @@ class MCTSEngine:
 	def sample_with_exponential_weight(self, exponent):
 		move_weights = {
 			move: (edge.edge_visits / float(self.mcts.root_node.all_edge_visits)) ** exponent
-			for move, edge in self.mcts.root_node.outgoing_edges.iteritems()
+			for move, edge in self.mcts.root_node.outgoing_edges.items()
 		}
 		# Normalize the weights.
-		normalization = 1.0 / sum(move_weights.itervalues())
+		normalization = 1.0 / sum(move_weights.values())
 		move_weights = {
 			move: weight * normalization
-			for move, weight in move_weights.iteritems()
+			for move, weight in move_weights.items()
 		}
 		return sample_by_weight(move_weights)
 
@@ -561,30 +561,30 @@ if __name__ == "__main__":
 	initialize_model("models/96x12-sample.npy")
 	setup_evaluator()
 	engine = MCTSEngine()
-	for _ in xrange(2):
-		print "Doing warmup evaluation."
+	for _ in range(2):
+		print("Doing warmup evaluation.")
 		start = time.time()
 		engine.genmove(0.1)
 		stop = time.time()
-		print "Warmup took:", stop - start
+		print("Warmup took:", stop - start)
 
-	print "Starting performance section."
+	print("Starting performance section.")
 	measure_time = 10.0
 	engine.genmove(measure_time, early_out=False)
 
 	total_visits = engine.mcts.root_node.all_edge_visits
-	print "Total visits:", total_visits
-	print "Ensembles:", len(global_evaluator.ensemble_sizes)
-	print "Average ensemble:", np.average(global_evaluator.ensemble_sizes)
+	print("Total visits:", total_visits)
+	print("Ensembles:", len(global_evaluator.ensemble_sizes))
+	print("Average ensemble:", np.average(global_evaluator.ensemble_sizes))
 
 	with open("speeds", "a+") as f:
-		print >>f, "ES=%i  QD=%4i  PT=%.3f  (MT=%f)  append (renorm)  Speed: %f" % (
+		print("ES=%i  QD=%4i  PT=%.3f  (MT=%f)  append (renorm)  Speed: %f" % (
 			NNEvaluator.ENSEMBLE_SIZE,
 			NNEvaluator.QUEUE_DEPTH,
 			NNEvaluator.PROBABILITY_THRESHOLD,
 			measure_time,
 			total_visits / measure_time,
-		)
+		), file=f)
 
-	print global_evaluator.ensemble_sizes
+	print(global_evaluator.ensemble_sizes)
 

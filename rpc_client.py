@@ -24,8 +24,8 @@ def evaluate(board, temperature):
 	softmax_posterior = engine.softmax(raw_posterior)
 	posterior = {move: engine.get_move_score(softmax_posterior, move) for move in board.legal_moves()}
 	# Renormalize the posterior. Add a small epsilon into the denominator to prevent divison by zero.
-	denominator = sum(posterior.itervalues()) + 1e-6
-	posterior = {move: prob / denominator for move, prob in posterior.iteritems()}
+	denominator = sum(posterior.values()) + 1e-6
+	posterior = {move: prob / denominator for move, prob in posterior.items()}
 
 	return posterior, value
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
 	evaluator = RPCEvaluator()
 	board = ataxx_rules.AtaxxState.initial()
 	evaluator.populate(board)
-	print board.evaluations.posterior, board.evaluations.value
+	print(board.evaluations.posterior, board.evaluations.value)
 
 #	array = np.zeros((7, 7, 4), dtype=np.int8)
 #	evaluate(array)

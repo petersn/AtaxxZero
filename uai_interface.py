@@ -11,7 +11,7 @@ if __name__ == "__main__":
 def uai_encode_square(xy):
 	x, y = xy
 	y = 6 - y
-	return "%s%i" % (string.letters[x], y + 1)
+	return "%s%i" % (string.ascii_lowercase[x], y + 1)
 
 def uai_encode_move(move):
 	if move == "pass":
@@ -22,7 +22,7 @@ def uai_encode_move(move):
 	return "%s%s" % (uai_encode_square(start), uai_encode_square(end))
 
 def uai_decode_square(s):
-	x, y = string.letters.index(s[0]), int(s[1]) - 1
+	x, y = string.ascii_lowercase.index(s[0].lower()), int(s[1]) - 1
 	y = 6 - y
 	return x, y
 
@@ -51,13 +51,13 @@ def main(args):
 		eng.MAX_STEPS = args.visits
 
 	while True:
-		line = raw_input()
+		line = input()
 		if line == "quit":
 			exit()
 		elif line == "uai":
-			print "id name AtaxxZero"
-			print "id author Peter Schmidt-Nielsen"
-			print "uaiok"
+			print("id name AtaxxZero")
+			print("id author Peter Schmidt-Nielsen")
+			print("uaiok")
 		elif line == "uainewgame":
 			board = ataxx_rules.AtaxxState.initial()
 			eng = engine.MCTSEngine()
@@ -73,10 +73,10 @@ def main(args):
 			else:
 				# This is safe, because of the visit limit we set above.
 				move = eng.genmove(1000000.0, use_weighted_exponent=5.0)
-			print "bestmove %s" % (uai_encode_move(move),)
+			print("bestmove %s" % (uai_encode_move(move),))
 		elif line == "showboard":
-			print board
-			print "boardok"
+			print(board)
+			print("boardok")
 		sys.stdout.flush()
 
 if __name__ == "__main__":
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 	parser.add_argument("--network-path", metavar="NETWORK", type=str, help="Name of the model to load.")
 	parser.add_argument("--visits", metavar="VISITS", default=None, type=int, help="Number of visits during MCTS.")
 	args = parser.parse_args()
-	print >>sys.stderr, args
+	print(args, file=sys.stderr)
 
 	engine.setup_evaluator(use_rpc=False)
 	engine.initialize_model(args.network_path)

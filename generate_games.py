@@ -10,7 +10,7 @@ MAXIMUM_GAME_PLIES = 400
 LOGIT_TEMPERATURE  = 0.0
 OPENING_RANDOMIZATION_SCHEDULE = [
 	0.2 * (0.5 ** (i/2))
-	for i in xrange(10)
+	for i in range(10)
 ]
 
 def generate_game(args):
@@ -19,7 +19,7 @@ def generate_game(args):
 		m = engine.MCTS(board.copy(), use_dirichlet_noise=True)
 	entry = {"boards": [], "moves": []}
 	all_steps = 0
-	for ply in xrange(MAXIMUM_GAME_PLIES):
+	for ply in range(MAXIMUM_GAME_PLIES):
 		if args.random_play:
 			training_move = selected_move = random.choice(board.legal_moves())
 		else:
@@ -27,10 +27,10 @@ def generate_game(args):
 				args.uai_player.set_state(board)
 				try:
 					training_move = selected_move = args.uai_player.genmove(args.supervised_ms)
-				except ValueError, e:
-					print "Board state:"
-					print board.fen()
-					print board
+				except ValueError as e:
+					print("Board state:")
+					print(board.fen())
+					print(board)
 					raise e
 			else:
 				# Do steps until the root is sufficiently visited.
@@ -56,22 +56,22 @@ def generate_game(args):
 		if board.result() != None:
 			break
 		if args.show_game:
-			print board
+			print(board)
 #			engine.global_evaluator.populate(m.root_node.board)
 #			m.root_node.board.evaluations.populate_noisy_posterior()
 #			__import__("pprint").pprint(sorted(m.root_node.board.evaluations.posterior.items(), key=lambda x: x[1]))
 #			__import__("pprint").pprint(sorted(m.root_node.board.evaluations.noisy_posterior.items(), key=lambda x: x[1]))
-			raw_input(">")
+			input(">")
 		if args.die_if_present and os.path.exists(args.die_if_present):
-			print "Exiting due to signal file!"
+			print("Exiting due to signal file!")
 			exit()
 	entry["result"] = board.result();
-	print "[%3i] Generated a %i ply game (%.2f avg steps) with result %r." % (
+	print("[%3i] Generated a %i ply game (%.2f avg steps) with result %r." % (
 		args.group_index,
 		len(entry["boards"]),
 		all_steps / float(ply + 1),
 		entry["result"],
-	)
+	))
 	return entry
 
 if __name__ == "__main__":
@@ -103,7 +103,7 @@ if __name__ == "__main__":
 	network_name = os.path.splitext(os.path.basename(args.network))
 
 	if args.random_play:
-		print "Doing random play! Loading no model, and not using RPC."
+		print("Doing random play! Loading no model, and not using RPC.")
 	elif args.use_rpc:
 		engine.setup_evaluator(use_rpc=True, temperature=LOGIT_TEMPERATURE)
 	else:
@@ -122,20 +122,20 @@ if __name__ == "__main__":
 		output_path = args.output_games
 	if args.no_write:
 		output_path = "/dev/null"
-	print "[%3i] Writing to: %s" % (args.group_index, output_path)
+	print("[%3i] Writing to: %s" % (args.group_index, output_path))
 
 	with open(output_path, "w") as f:
 		games_generated = 0
 		while True:
 			entry = generate_game(args)
 			if entry["result"] is None:
-				print "[%3i] Skipping game with null result." % (args.group_index,)
+				print("[%3i] Skipping game with null result." % (args.group_index,))
 				continue
 			json.dump(entry, f)
 			f.write("\n")
 			f.flush()
 			games_generated += 1
 			if args.game_count != None and games_generated >= args.game_count:
-				print "Done generating games."
+				print("Done generating games.")
 				break
 

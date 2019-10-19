@@ -3,6 +3,7 @@
 import sys
 import numpy as np
 import tensorflow as tf
+from functools import reduce
 
 product = lambda l: reduce(lambda x, y: x * y, l, 1)
 
@@ -12,9 +13,9 @@ MOVE_TYPES = 17
 class Network:
 	INPUT_FEATURE_COUNT = 4
 	NONLINEARITY = [tf.nn.relu]
-	FILTERS = 16
+	FILTERS = 128
 	CONV_SIZE = 3
-	BLOCK_COUNT = 2
+	BLOCK_COUNT = 12
 	VALUE_FILTERS = 1
 #	VALUE_FC_SIZES = [BOARD_SIZE * BOARD_SIZE * VALUE_FILTERS, 32, 1]
 	POLICY_OUTPUT_SHAPE = [None, BOARD_SIZE, BOARD_SIZE, MOVE_TYPES]
@@ -57,7 +58,7 @@ class Network:
 		self.stack_convolution(self.CONV_SIZE, self.INPUT_FEATURE_COUNT, self.FILTERS)
 		self.stack_nonlinearity()
 		# Stack some number of residual blocks.
-		for _ in xrange(self.BLOCK_COUNT):
+		for _ in range(self.BLOCK_COUNT):
 			self.stack_block()
 		# Stack a final 1x1 convolution transitioning to fully-connected features.
 		#self.stack_convolution(1, self.FILTERS, self.OUTPUT_CONV_FILTERS, batch_normalization=False)
@@ -108,7 +109,7 @@ class Network:
 
 	def new_bias_variable(self, shape):
 		self.total_parameters += product(shape)
-		var = tf.Variable(tf.constant(0.1, shape=shape))
+		var = tf.Variable(tf.constant(0.01, shape=shape))
 		self.parameters.append(var)
 		return var
 
@@ -179,7 +180,7 @@ def save_model(net, path):
 	x_conv_weights = [sess.run(var) for var in net.parameters]
 	x_bn_params = [sess.run(i) for i in get_batch_norm_vars(net)]
 	np.save(path, [x_conv_weights, x_bn_params])
-	print "\x1b[35mSaved model to:\x1b[0m", path
+	print("\x1b[35mSaved model to:\x1b[0m", path)
 
 # XXX: Still horrifically fragile wrt batch norm variables due to the above horrible graph scraping stuff.
 def load_model(net, path):
@@ -196,6 +197,6 @@ def load_model(net, path):
 
 if __name__ == "__main__":
 	net = Network("net/")
-	print get_batch_norm_vars(net)
-	print net.total_parameters
+	print(get_batch_norm_vars(net))
+	print(net.total_parameters)
 

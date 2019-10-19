@@ -19,7 +19,7 @@ parser.add_argument("--output-games", metavar="PATH", required=True, help="Path 
 parser.add_argument("--visits", metavar="N", type=int, default=100, help="At each move in the self-play games perform MCTS until the root node has N visits.")
 parser.add_argument("--buffer-size", metavar="N", type=int, default=128, help="Use a buffer that evaluates N samples in parallel on the GPU. Requires that we launch 2*N threads each playing a parallel game, and thus have memory usage proportional to N.")
 args = parser.parse_args()
-print "Arguments:", args
+print("Arguments:", args)
 
 engine.initialize_model(args.network)
 
@@ -28,7 +28,7 @@ work_buffers = [
 	for _ in (0, 1)
 ]
 link.launch_threads(
-	args.output_games,
+	args.output_games.encode("utf-8"),
 	args.visits,
 	ctypes.c_void_p(work_buffers[0].ctypes.data),
 	ctypes.c_void_p(work_buffers[1].ctypes.data),
@@ -37,10 +37,10 @@ link.launch_threads(
 )
 
 def handler(signal, frame):
-	print "Exiting cleanly...",
+	print("Exiting cleanly...", end=' ')
 	sys.stdout.flush()
 	link.shutdown()
-	print "all threads shutdown."
+	print("all threads shutdown.")
 	exit()
 signal.signal(signal.SIGTERM, handler)
 signal.signal(signal.SIGINT, handler)
@@ -74,10 +74,10 @@ while True:
 	span = workload_times[-averaging_window:]
 	rate = (len(span) - 1.0) / (span[-1] - span[0])
 	if len(workload_times) % 1000 == 0:
-		print "Rate: %.3fk evals/s  (Total: %ik)" % (
+		print("Rate: %.3fk evals/s  (Total: %ik)" % (
 			rate * args.buffer_size * 1e-3,
 			len(workload_times) * args.buffer_size * 1e-3,
-		)
+		))
 
 	# Technically keeping just the two most recent should be sufficient to avoid any issues.
 	recent_arrays = recent_arrays[-6:]

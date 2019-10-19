@@ -5,7 +5,7 @@
 #gevent.hub.Hub.backend = "poll"
 
 import numpy
-import Queue, threading, time, random, sys, hashlib
+import queue, threading, time, random, sys, hashlib
 import gevent.event, gevent.queue, gevent.server
 from mprpc import RPCServer
 import engine
@@ -37,7 +37,7 @@ class Processor:
 
 		batch_size = len(self.accumulated_features)
 		if random.random() < 0.0001:
-			print "Evaluating batch of size:", batch_size
+			print("Evaluating batch of size:", batch_size)
 
 		# Do the actual processing here!
 		posteriors, values = engine.sess.run(
@@ -82,15 +82,15 @@ class NetworkServer(RPCServer):
 		return result_slot.get()
 
 if len(sys.argv) != 3:
-	print "Usage: %s model_path port-to-host-on" % (sys.argv[0],)
+	print("Usage: %s model_path port-to-host-on" % (sys.argv[0],))
 	exit(1)
 
 #model_path = train.model_path(sys.argv[1])
 engine.initialize_model(sys.argv[1])
 
 port = int(sys.argv[2])
-print
-print "Launching on port:", port
+print()
+print("Launching on port:", port)
 
 gevent.spawn(Processor)
 server = gevent.server.StreamServer(("127.0.0.1", port), NetworkServer)

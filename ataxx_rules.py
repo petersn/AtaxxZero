@@ -77,9 +77,9 @@ class AtaxxState:
 			" ".join(
 				"#" if (x, y) in BLOCKED_CELLS else
 				{0: ".", 1: RED + "X" + ENDC, 2: BLUE + "O" + ENDC}[self[x, y]]
-				for x in xrange(SIZE)
+				for x in range(SIZE)
 			)
-			for y in xrange(SIZE)
+			for y in range(SIZE)
 		)
 
 	def fen(self):
@@ -87,9 +87,9 @@ class AtaxxState:
 			"".join(
 				"-" if (x, y) in BLOCKED_CELLS else
 				{0: ".", 1: "x", 2: "o"}[self[x, y]]
-				for x in xrange(SIZE)
+				for x in range(SIZE)
 			)
-			for y in xrange(SIZE)
+			for y in range(SIZE)
 		) + " " + {1: "x", 2: "o"}[self.to_move]
 		for i in range(1, SIZE + 1)[::-1]:
 			s = s.replace("."*i, str(i))
@@ -125,8 +125,8 @@ class AtaxxState:
 		if self.legal_moves_cache is None:
 			self.legal_moves_cache = []
 			can_copy_to = set()
-			for x in xrange(SIZE):
-				for y in xrange(SIZE):
+			for x in range(SIZE):
+				for y in range(SIZE):
 					source = x, y
 					# Skip cells that aren't our pieces.
 					if self[source] != self.to_move:
@@ -165,17 +165,17 @@ class AtaxxState:
 
 if __name__ == "__main__":
 	import random
-	print "Doing random play demonstration."
+	print("Doing random play demonstration.")
 	state = AtaxxState.initial()
 	while True:
 		move = random.choice(list(state.legal_moves()))
 		state.move(move)
-		print
-		print move
-		print state
-		print state.board, state.to_move
+		print()
+		print(move)
+		print(state)
+		print(state.board, state.to_move)
 		r = state.result()
 		if r != None:
-			print "Result:", r
+			print("Result:", r)
 			break
 

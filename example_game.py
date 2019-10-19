@@ -13,13 +13,13 @@ def generate_game(args):
 	board = ataxx_rules.AtaxxState.initial()
 	e = engine.MCTSEngine()
 	while True:
-		print board
+		print(board)
 		selected_move = e.genmove(1.0, early_out=False, use_weighted_exponent=5.0)
 		board.move(selected_move)
 		e.set_state(board.copy())
 		if board.result() != None:
 			break
-		raw_input(">")
+		input(">")
 
 if __name__ == "__main__":
 	import argparse
