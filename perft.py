@@ -13,11 +13,15 @@ def perft(position, depth):
 				new_ensemble.append(new_board)
 		ensemble = new_ensemble
 	print("Size:", len(ensemble))
+	return len(ensemble)
 
 board = ataxx_rules.AtaxxState.initial()
+total = 0
 for move in board.legal_moves():
 	copy = board.copy()
 	copy.move(move)
 	print("Move:", move, end=' ') 
-	perft(copy, 4)
+	total += perft(copy, 3)
+
+print("Total:", total)
 

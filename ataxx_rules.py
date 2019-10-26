@@ -6,7 +6,8 @@ RED  = "\x1b[91m"
 BLUE = "\x1b[94m"
 ENDC = "\x1b[0m"
 SIZE = 7
-BLOCKED_CELLS = frozenset([(3, 2), (2, 3), (4, 3), (3, 4)])
+#BLOCKED_CELLS = frozenset([(3, 2), (2, 3), (4, 3), (3, 4)])
+BLOCKED_CELLS = frozenset()
 LEGAL_SQUARE_COUNT = SIZE * SIZE - len(BLOCKED_CELLS)
 OTHER_PLAYER = {1: 2, 2: 1}
 NEAR_NEIGHBOR_OFFSETS = [
@@ -50,13 +51,22 @@ class AtaxxState:
 
 	@staticmethod
 	def from_fen(fen):
-		arr = array.array("b", [0] * (SIZE * SIZE))
-		index = 0
-		board_state_string, turn_to_move = fen.split(" ")
-		rows = 0
-		for c in board_state_string:
-			index += 1
-#		board = AtaxxState(
+		player_mapping = {"x": 1, "o": 2}
+		components = fen.lower().split()
+		board_state_string, player_to_move = components[:2]
+		board = AtaxxState(
+			board=array.array("b", [0] * (SIZE * SIZE)),
+			to_move=player_mapping[player_to_move],
+		)
+		for y, chunk in enumerate(board_state_string.split("/")):
+			x = 0
+			for c in chunk:
+				if c in ("1", "2", "3", "4", "5", "6", "7"):
+					x += int(c)
+					continue
+				board[x, y] = player_mapping[c]
+				x += 1
+		return board
 
 	def copy(self):
 		return AtaxxState(self.board[:], self.to_move, self.legal_moves_cache)
@@ -150,6 +160,11 @@ class AtaxxState:
 		# Get counts of the various kinds of cells.
 		counts = {i: self.board.count(i) for i in (0, 1, 2)}
 		assert counts[1] != 0 or counts[2] != 0
+		# If the current player has no non-pass moves then score immediately.
+		if self.legal_moves() == ["pass"]:
+			counts[OTHER_PLAYER[self.to_move]] += counts[0] - len(BLOCKED_CELLS)
+			counts[0] = len(BLOCKED_CELLS)
+			return max(counts, key=counts.__getitem__)
 		# If either player has no pieces then the other player wins.
 		if counts[1] == 0:
 			return 2
@@ -168,12 +183,14 @@ if __name__ == "__main__":
 	print("Doing random play demonstration.")
 	state = AtaxxState.initial()
 	while True:
-		move = random.choice(list(state.legal_moves()))
+		move = random.choice(state.legal_moves())
 		state.move(move)
-		print()
+#		print()
 		print(move)
-		print(state)
-		print(state.board, state.to_move)
+#		print(state)
+		print(state.fen())
+#		print(state.board, state.to_move, state.fen())
+		assert AtaxxState.from_fen(state.fen()) == state
 		r = state.result()
 		if r != None:
 			print("Result:", r)

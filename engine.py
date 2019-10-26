@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 import logging, time, sys, random, collections
 import numpy as np
@@ -6,6 +6,7 @@ import tensorflow as tf
 import ataxx_rules
 import model
 import uai_interface
+#import nn_evals
 
 RED  = "\x1b[91m"
 ENDC = "\x1b[0m"
@@ -124,9 +125,9 @@ def add_dirichlet_noise_to_posterior(posterior, alpha, weight):
 	return posterior
 
 class NNEvaluator:
-	ENSEMBLE_SIZE = 16
+	ENSEMBLE_SIZE = 32
 	QUEUE_DEPTH = 4096
-	PROBABILITY_THRESHOLD = 0.09
+	PROBABILITY_THRESHOLD = 0.15
 	MAXIMUM_CACHE_ENTRIES = 200000
 
 	class Entry:
@@ -174,7 +175,12 @@ class NNEvaluator:
 
 		# Evaluate the boards together.
 		self.ensemble_sizes.append(len(ensemble))
+#		symmetries = [random.randrange(8) for _ in range(len(ensemble))]
 		features = list(map(board_to_features, ensemble))
+#		features = [
+#			nn_evals.apply_symmetry(board_to_features(board), symmetry)
+#			for board, symmetry in zip(ensemble, symmetries)
+#		]
 		posteriors, values = sess.run(
 			[network.policy_output, network.value_output],
 			feed_dict={
@@ -182,6 +188,10 @@ class NNEvaluator:
 				network.is_training_ph: False,
 			},
 		)
+#		posteriors = [
+#			nn_evals.apply_symmetry(posterior, nn_evals.inverse_symmetry[symmetry])
+#			for posterior, symmetry in zip(posteriors, symmetries)
+#		]
 
 		# Write an entry into our cache.
 		for board, raw_posterior, (value,) in zip(ensemble, posteriors, values):
@@ -384,6 +394,7 @@ class MCTS:
 		value_score = (new_node.board.evaluations.value + 1) / 2.0
 		# 4) Backup.
 		inverted = False
+		edge = None
 		for edge in reversed(edges_on_path):
 			# Remember that each edge corresponds to an alternating player, so we have to reverse scores.
 			inverted = not inverted
@@ -442,6 +453,7 @@ class MCTSEngine:
 		# XXX: You can pick out the wrong board because board equality doesn't include history.
 		# For example, you can't distinguish different kinds of promotions that are followed by a capture.
 		# TODO: Evaluate if this can cause a really rare bug.
+		new_board = new_board.copy()
 
 		# Check to see if this board is one of our children's children.
 		for edge1 in self.mcts.root_node.outgoing_edges.values():
@@ -449,7 +461,7 @@ class MCTSEngine:
 				if edge2.child_node.board == new_board:
 					# We found a match! Reuse part of the tree.
 					self.mcts.play(self.state.to_move, edge1.move)
-					self.mcts.play(not self.state.to_move, edge2.move)
+					self.mcts.play(ataxx_rules.OTHER_PLAYER[self.state.to_move], edge2.move)
 					self.state = new_board
 					return
 		logging.debug(RED + "Failed to match a subtree." + ENDC)
@@ -479,6 +491,8 @@ class MCTSEngine:
 					break
 			total_steps += 1
 			visited_edge = self.mcts.step()
+			if visited_edge is None:
+				return "pass"
 			assert visited_edge.parent_node == self.mcts.root_node
 			most_visited_edges.add(visited_edge)
 
@@ -509,15 +523,21 @@ class MCTSEngine:
 		))
 		self.print_principal_variation()
 		logging.debug("Cache entries: %i" % (len(global_evaluator.cache),))
+		print("info speed %f nps" % (total_steps / (time.time() - start_time),))
 		if not use_weighted_exponent:
 			return most_visited_edges.entries[-1].move
 		else:
 			return self.sample_with_exponential_weight(use_weighted_exponent)
 
 	def sample_with_exponential_weight(self, exponent):
+		max_visits = max(
+			edge.edge_visits
+			for move, edge in self.mcts.root_node.outgoing_edges.items()
+		)
 		move_weights = {
 			move: (edge.edge_visits / float(self.mcts.root_node.all_edge_visits)) ** exponent
 			for move, edge in self.mcts.root_node.outgoing_edges.items()
+			if edge.edge_visits >= max_visits * 0.5
 		}
 		# Normalize the weights.
 		normalization = 1.0 / sum(move_weights.values())
@@ -558,7 +578,8 @@ if __name__ == "__main__":
 		format="[%(process)5d] %(message)s",
 		level=logging.DEBUG,
 	)
-	initialize_model("models/96x12-sample.npy")
+#	initialize_model("models/96x12-sample.npy")
+	initialize_model("/tmp/model-177.npy")
 	setup_evaluator()
 	engine = MCTSEngine()
 	for _ in range(2):

@@ -1,10 +1,10 @@
 #!/usr/bin/python
 
-import sys, random, string, subprocess, atexit, time, datetime, itertools
+import sys, random, string, subprocess, atexit, time, datetime, itertools, os
 import uai_interface
 import ataxx_rules
 
-OPENING_DEPTH = 4
+OPENING_DEPTH = 0
 
 class UAIPlayer:
 	def __init__(self, cmd):
@@ -12,14 +12,16 @@ class UAIPlayer:
 		# WARNING: What I'm doing here is technically invalid!
 		# In theory the output pipe of this process could fill up before I read, making it hang.
 		# TODO: Decide if I care.
-		self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+		self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 #		atexit.register(self.proc.kill)
 		self.send("uai\n")
 		self.send("setoption name Hash value 1024\n")
+		self.send("isready\n")
+		self.send("uainewgame\n")
 #		self.send("setoption name Search value most-captures\n")
 
 	def send(self, s):
-		self.proc.stdin.write(s)
+		self.proc.stdin.write(s.encode("utf8"))
 		self.proc.stdin.flush()
 
 	def quit(self):
@@ -27,7 +29,7 @@ class UAIPlayer:
 		try:
 			self.proc.kill()
 		except OSError:
-			pass
+			print("Error sending SIGKILL to engine: %r" % (self.cmd,))
 		self.proc.wait()
 
 	def reset(self):
@@ -47,9 +49,11 @@ class UAIPlayer:
 #			print " ".join(self.cmd)[:10], "--", self.showboard()
 		self.send("go movetime %i\n" % ms)
 		while True:
-			line = self.proc.stdout.readline().strip()
+			line = self.proc.stdout.readline().strip().decode("utf8")
 			if not line:
 				raise Exception("Bad UAI!")
+			if line.startswith("info speed "):
+				print(line)
 			if line.startswith("bestmove "):
 #				print " ".join(self.cmd)[:10], "##", line
 				return uai_interface.uai_decode_move(line[9:])
@@ -59,7 +63,7 @@ class UAIPlayer:
 		self.send("showboard\n")
 		lines = []
 		while True:
-			line = self.proc.stdout.readline()
+			line = self.proc.stdout.readline().decode("utf8")
 			if line.strip() == "boardok":
 				break
 			lines.append(line)
@@ -88,8 +92,12 @@ def play_one_game(args, engine1, engine2, opening_moves):
 
 	def print_state():
 		if args.show_games:
+			colorize = lambda do, s: ataxx_rules.RED + s + ataxx_rules.ENDC if do else s
+			player_to_move = ply_number % 2 + 1
+			engine_name1 = colorize(player_to_move == 1, engine1[-1])
+			engine_name2 = colorize(player_to_move == 2, engine2[-1])
 			print()
-			print("===================== Player %i move." % (ply_number % 2 + 1,))
+			print("======= Player %i move. %s - %s" % (player_to_move, engine_name1, engine_name2))
 			print("[%3i plies] Score: %2i - %2i" % (ply_number, board.board.count(1), board.board.count(2)))
 			print(board.fen())
 			print(board)
@@ -101,8 +109,10 @@ def play_one_game(args, engine1, engine2, opening_moves):
 		print_state()
 		# If there is only one legal move then force it.
 		if ply_number < len(opening_moves):
+			print("Opening move.")
 			move = opening_moves[ply_number]
 		elif len(board.legal_moves()) == 1:
+			print("Forced, only one legal move.")
 			move, = board.legal_moves()
 		else:
 			ms = int(args.tc * 1000)
@@ -130,6 +140,10 @@ def play_one_game(args, engine1, engine2, opening_moves):
 
 	for player in players:
 		player.quit()
+
+	# Hacky hack.
+	print("Killing all tiktaxx processes.")
+	os.system("killall -9 tiktaxx")
 
 	result = board.result()
 	if result == None:
@@ -221,8 +235,8 @@ if __name__ == "__main__":
 				pairings = [
 					(a, b)
 					for a, b in pairings
-					if ("005-pre2" in " ".join(a) or "005-pre2" in " ".join(b) or "ataxx-engine" in " ".join(a) or "ataxx-engine" in " ".join(b)) or
-						(abs(get_model_number(a) - get_model_number(b)) <= 10 and (get_model_number(a) > 0 or get_model_number(b) > 0))
+#					if ("005-pre2" in " ".join(a) or "005-pre2" in " ".join(b) or "ataxx-engine" in " ".join(a) or "ataxx-engine" in " ".join(b)) or
+#						(abs(get_model_number(a) - get_model_number(b)) <= 10 and (get_model_number(a) > 0 or get_model_number(b) > 0))
 				]
 			random.shuffle(pairings)
 			for pairing in pairings:
