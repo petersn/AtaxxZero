@@ -38,13 +38,16 @@ def test():
 		assert uai_decode_move(uai_encode_move(m)) == m
 test()
 
-def main(args):
+def make_pair():
 	board = ataxx_rules.AtaxxState.initial()
 	eng = engine.MCTSEngine()
 	if args.visits != None:
 #		eng.VISITS = args.visits
 		eng.MAX_STEPS = args.visits
+	return board, eng
 
+def main(args):
+	board, eng = make_pair()
 	while True:
 		line = input()
 		if line == "quit":
@@ -54,8 +57,7 @@ def main(args):
 			print("id author Peter Schmidt-Nielsen")
 			print("uaiok")
 		elif line == "uainewgame":
-			board = ataxx_rules.AtaxxState.initial()
-			eng = engine.MCTSEngine()
+			board, eng = make_pair()
 		elif line == "isready":
 			print("readyok")
 		elif line.startswith("moves "):
